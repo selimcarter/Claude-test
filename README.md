@@ -22,6 +22,23 @@ npm start
 
 Puis ouvrez `http://localhost:3000` dans deux navigateurs (ou deux profils) pour tester avec deux personnes.
 
+## Mettre le site en ligne (pour y acceder depuis un telephone)
+
+Ce site a besoin d'un serveur qui tourne en continu (Socket.IO garde une connexion ouverte), donc un hebergeur d'archives statiques (type Vercel/Netlify gratuit) ne convient pas. **Render** offre un service gratuit qui fonctionne bien pour ca :
+
+1. Allez sur [render.com](https://render.com) et connectez-vous avec votre compte GitHub.
+2. Cliquez **New +** puis **Web Service**.
+3. Choisissez le depot `selimcarter/claude-test` et la branche `claude/sync-streaming-platform-4typuw`.
+4. Renseignez :
+   - **Build Command** : `npm install`
+   - **Start Command** : `npm start`
+   - **Instance Type** : `Free`
+5. Cliquez **Create Web Service**. Au bout de 1-2 minutes, Render fournit une URL publique (`https://xxxx.onrender.com`) que vous pourrez ouvrir depuis votre telephone et partager avec l'autre personne.
+
+(Alternative equivalente : [Railway](https://railway.app), meme principe : connecter le depot, `npm install` / `npm start`.)
+
+Note : sur le plan gratuit de Render, le serveur s'endort apres une periode d'inactivite et met quelques secondes a se reveiller au premier chargement.
+
 ## Stack technique
 
 - Backend : Node.js, Express, Socket.IO (salons, chat, signalisation WebRTC, synchronisation YouTube)
