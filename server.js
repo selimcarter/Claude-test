@@ -1,7 +1,9 @@
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { WebSocketServer } = require('ws');
 
 const app = express();
 const httpServer = createServer(app);
@@ -110,6 +112,113 @@ io.on('connection', (socket) => {
       io.to(currentRoom).emit('peer-left', { id: socket.id });
       io.to(currentRoom).emit('room-users', roomUserList(currentRoom));
       if (room.users.size === 0) rooms.delete(currentRoom);
+    }
+  });
+});
+
+// =====================================================================
+// Relais WebSocket "brut" pour l'extension navigateur (Netflix / Prime
+// Video). L'extension s'injecte directement dans la page et pilote la
+// balise <video> native : ce canal ne fait que relayer play/pause/temps,
+// chat et signalisation WebRTC entre les 2 personnes d'un meme salon.
+// Protocole JSON simple (independant de Socket.IO) car un content script
+// / service worker d'extension n'a pas besoin du client socket.io.
+// =====================================================================
+const extWss = new WebSocketServer({ server: httpServer, path: '/ext-ws' });
+
+// roomId -> Map<clientId, { ws, name }>
+const extRooms = new Map();
+
+function getExtRoom(roomId) {
+  if (!extRooms.has(roomId)) extRooms.set(roomId, new Map());
+  return extRooms.get(roomId);
+}
+
+function extRoomUserList(roomId) {
+  const room = extRooms.get(roomId);
+  if (!room) return [];
+  return Array.from(room.entries()).map(([id, c]) => ({ id, name: c.name }));
+}
+
+function sendJson(ws, obj) {
+  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function broadcastExtRoom(roomId, obj, exceptId) {
+  const room = extRooms.get(roomId);
+  if (!room) return;
+  room.forEach((client, id) => {
+    if (id !== exceptId) sendJson(client.ws, obj);
+  });
+}
+
+extWss.on('connection', (ws) => {
+  const clientId = crypto.randomUUID();
+  let currentRoom = null;
+
+  ws.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch (e) {
+      return;
+    }
+
+    if (msg.type === 'join') {
+      const roomId = String(msg.roomId || '');
+      if (!roomId) return;
+      currentRoom = roomId;
+      const room = getExtRoom(roomId);
+
+      // Meme limite que le site : 2 personnes par salon (WebRTC en mesh).
+      if (room.size >= 2) {
+        sendJson(ws, { type: 'room-full' });
+        return;
+      }
+
+      const name = String(msg.name || 'Invite').slice(0, 30);
+      room.set(clientId, { ws, name });
+
+      const others = extRoomUserList(roomId).filter((u) => u.id !== clientId);
+      sendJson(ws, { type: 'joined', self: { id: clientId, name }, peers: others });
+      broadcastExtRoom(roomId, { type: 'peer-joined', id: clientId, name }, clientId);
+      broadcastExtRoom(roomId, { type: 'room-users', users: extRoomUserList(roomId) });
+    } else if (msg.type === 'chat') {
+      if (!currentRoom) return;
+      const room = extRooms.get(currentRoom);
+      const name = room && room.get(clientId) ? room.get(clientId).name : 'Invite';
+      const payload = {
+        type: 'chat',
+        from: name,
+        fromId: clientId,
+        text: String(msg.text || '').slice(0, 2000),
+        ts: Date.now(),
+      };
+      broadcastExtRoom(currentRoom, payload); // envoye a tout le monde, y compris a soi-meme
+    } else if (msg.type === 'video-state') {
+      if (!currentRoom) return;
+      broadcastExtRoom(currentRoom, {
+        type: 'video-state',
+        state: msg.state,
+        time: msg.time,
+        ts: Date.now(),
+      }, clientId);
+    } else if (msg.type === 'signal') {
+      if (!msg.to || !currentRoom) return;
+      const room = extRooms.get(currentRoom);
+      const target = room && room.get(msg.to);
+      if (target) sendJson(target.ws, { type: 'signal', from: clientId, signal: msg.signal });
+    }
+  });
+
+  ws.on('close', () => {
+    if (!currentRoom) return;
+    const room = extRooms.get(currentRoom);
+    if (room) {
+      room.delete(clientId);
+      broadcastExtRoom(currentRoom, { type: 'peer-left', id: clientId });
+      broadcastExtRoom(currentRoom, { type: 'room-users', users: extRoomUserList(currentRoom) });
+      if (room.size === 0) extRooms.delete(currentRoom);
     }
   });
 });

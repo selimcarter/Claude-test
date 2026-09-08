@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Watch Together - Netflix & Prime Video Sync",
+  "version": "1.0.0",
+  "description": "Synchronise la lecture Netflix / Prime Video avec une autre personne, avec camera et chat, en complement du site Watch Together.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://*.netflix.com/*",
+    "*://*.primevideo.com/*",
+    "*://*.amazon.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.netflix.com/*",
+        "*://*.primevideo.com/*",
+        "*://*.amazon.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Watch Together"
+  }
+}
