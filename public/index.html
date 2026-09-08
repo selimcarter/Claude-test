@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Watch Together</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== Ecran d'accueil ===== -->
+<section id="landing" class="screen">
+  <div class="landing-card">
+    <h1>Watch Together</h1>
+    <p class="subtitle">Regardez YouTube (synchronise automatiquement) ou Netflix / Prime Video (synchro manuelle) a distance, avec camera et chat.</p>
+
+    <label for="name-input">Votre prenom</label>
+    <input id="name-input" type="text" placeholder="Ex: Selim" maxlength="30">
+
+    <div class="landing-actions">
+      <button id="create-room-btn" class="primary">Creer un salon</button>
+      <div class="join-row">
+        <input id="room-code-input" type="text" placeholder="Code du salon" maxlength="12">
+        <button id="join-room-btn">Rejoindre</button>
+      </div>
+    </div>
+    <p class="hint">Envoyez le lien du salon a la personne avec qui vous voulez regarder.</p>
+  </div>
+</section>
+
+<!-- ===== Application principale ===== -->
+<section id="app" class="screen hidden">
+  <header class="topbar">
+    <div class="room-info">
+      <span class="room-label">Salon</span>
+      <code id="room-code-display"></code>
+      <button id="copy-link-btn" title="Copier le lien d'invitation">Copier le lien</button>
+    </div>
+    <div class="tabs" id="platform-tabs">
+      <button class="tab-btn active" data-platform="youtube">YouTube</button>
+      <button class="tab-btn" data-platform="netflix">Netflix</button>
+      <button class="tab-btn" data-platform="prime">Prime Video</button>
+    </div>
+    <div class="presence" id="presence-list"></div>
+  </header>
+
+  <main class="main-grid">
+    <!-- Zone video -->
+    <div class="video-area">
+
+      <!-- Panneau YouTube -->
+      <div id="panel-youtube" class="platform-panel active">
+        <div class="yt-controls">
+          <input id="yt-url-input" type="text" placeholder="Collez une URL ou un ID YouTube...">
+          <button id="yt-load-btn">Charger</button>
+        </div>
+        <div id="yt-player-wrap">
+          <div id="yt-player"></div>
+          <div id="yt-placeholder" class="placeholder">
+            <p>Collez un lien YouTube ci-dessus pour commencer.<br>La lecture, la pause et le deplacement dans la video seront synchronises automatiquement.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panneau Netflix -->
+      <div id="panel-netflix" class="platform-panel">
+        <div class="manual-sync-card">
+          <h2>Netflix</h2>
+          <p class="warning">Netflix bloque toute integration externe (DRM). Impossible de piloter leur lecteur depuis ce site.
+          Ouvrez Netflix dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
+          <a href="https://www.netflix.com" target="_blank" rel="noopener" class="open-btn">Ouvrir Netflix dans un nouvel onglet</a>
+          <div class="sync-tools">
+            <button class="countdown-btn" data-seconds="5">Lancer un compte a rebours (5s)</button>
+            <button class="countdown-btn" data-seconds="10">Compte a rebours (10s)</button>
+            <button class="pause-ping-btn">Envoyer "Pause maintenant !"</button>
+          </div>
+          <div id="countdown-display-netflix" class="countdown-display"></div>
+        </div>
+      </div>
+
+      <!-- Panneau Prime Video -->
+      <div id="panel-prime" class="platform-panel">
+        <div class="manual-sync-card">
+          <h2>Amazon Prime Video</h2>
+          <p class="warning">Prime Video bloque lui aussi toute integration externe (DRM). Ouvrez Prime Video dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
+          <a href="https://www.primevideo.com" target="_blank" rel="noopener" class="open-btn">Ouvrir Prime Video dans un nouvel onglet</a>
+          <div class="sync-tools">
+            <button class="countdown-btn" data-seconds="5">Lancer un compte a rebours (5s)</button>
+            <button class="countdown-btn" data-seconds="10">Compte a rebours (10s)</button>
+            <button class="pause-ping-btn">Envoyer "Pause maintenant !"</button>
+          </div>
+          <div id="countdown-display-prime" class="countdown-display"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Chat -->
+    <aside class="chat-panel">
+      <div class="chat-messages" id="chat-messages"></div>
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" type="text" placeholder="Ecrire un message..." maxlength="2000" autocomplete="off">
+        <button type="submit">Envoyer</button>
+      </form>
+    </aside>
+  </main>
+
+  <!-- Bulle camera deplacable -->
+  <div id="camera-widget" class="camera-widget">
+    <div class="camera-drag-handle" id="camera-drag-handle">
+      <video id="local-video" autoplay playsinline muted></video>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+    <div class="camera-buttons">
+      <button id="toggle-cam-btn" title="Activer/couper la camera">Camera</button>
+      <button id="toggle-mic-btn" title="Activer/couper le micro">Micro</button>
+    </div>
+  </div>
+
+</section>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/app.js" type="module"></script>
+</body>
+</html>
