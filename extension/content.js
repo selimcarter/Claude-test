@@ -16,6 +16,36 @@
     micOn: true,
   };
 
+  // STUN public + TURN public de secours (OpenRelay/Metered), indispensable
+  // des que les 2 personnes ne sont pas sur le meme reseau (NAT restrictif,
+  // 4G...) : sans TURN, la connexion camera echoue silencieusement.
+  const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ];
+
+  function debugLog(...args) {
+    console.debug('[watch-together-ext]', ...args);
+  }
+
+  function mediaErrorMessage(err) {
+    switch (err && err.name) {
+      case 'NotAllowedError':
+      case 'SecurityError':
+        return 'Acces camera/micro refuse sur ce site. Autorisez-le (icone camera dans la barre d\'adresse) puis rechargez la page.';
+      case 'NotFoundError':
+      case 'OverconstrainedError':
+        return 'Aucune camera/micro detecte sur cet appareil.';
+      case 'NotReadableError':
+        return 'Camera/micro deja utilise par une autre application ou un autre onglet/navigateur.';
+      default:
+        return `Camera/micro indisponibles (${err && err.message ? err.message : 'erreur inconnue'}).`;
+    }
+  }
+
   // ===================== Detection de la balise video =====================
   function findVideo() {
     return document.querySelector('video');
@@ -98,49 +128,98 @@
   // ===================== WebRTC (camera) =====================
   async function initMedia() {
     if (state.localStream) return;
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      ui.toast("Camera indisponible : contexte non securise (HTTPS requis).");
+      return;
+    }
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       ui.setLocalStream(state.localStream);
+      // Si une connexion pair-a-pair existait deja sans piste locale (permission
+      // camera pas encore accordee au moment ou l'autre personne s'est connectee),
+      // on ajoute les pistes maintenant : ca relance la negociation toute seule.
+      state.peerConnections.forEach((pc) => addLocalTracksToPeer(pc));
     } catch (e) {
-      ui.toast('Camera/micro indisponibles ou refuses sur ce site.');
+      ui.toast(mediaErrorMessage(e));
     }
   }
 
+  function addLocalTracksToPeer(pc) {
+    if (!state.localStream) return;
+    const alreadySent = pc.getSenders().map((s) => s.track);
+    state.localStream.getTracks().forEach((track) => {
+      if (!alreadySent.includes(track)) pc.addTrack(track, state.localStream);
+    });
+  }
+
+  // "Negociation parfaite" (MDN) : les DEUX pairs peuvent initier une offre des
+  // qu'ils ont une piste a envoyer, au lieu de reserver ce droit a un seul cote
+  // (qui pouvait bloquer silencieusement toute la connexion s'il n'avait pas
+  // encore sa camera prete). Un pair "poli" cede en cas de collision d'offres.
   function connectToPeer(peerId) {
-    if (state.peerConnections.has(peerId)) return;
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    state.peerConnections.set(peerId, pc);
+    if (state.peerConnections.has(peerId)) return state.peerConnections.get(peerId);
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const polite = state.myId > peerId;
+    let makingOffer = false;
+    pc._polite = polite;
+    pc._ignoreOffer = false;
+    pc._makingOffer = () => makingOffer;
 
-    if (state.localStream) {
-      state.localStream.getTracks().forEach((t) => pc.addTrack(t, state.localStream));
-    }
+    pc.onnegotiationneeded = async () => {
+      try {
+        makingOffer = true;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendBg({ type: 'local-signal', to: peerId, signal: { sdp: pc.localDescription } });
+      } catch (e) {
+        debugLog('Erreur creation offre', peerId, e);
+      } finally {
+        makingOffer = false;
+      }
+    };
 
-    pc.ontrack = (event) => ui.setRemoteStream(event.streams[0]);
     pc.onicecandidate = (event) => {
       if (event.candidate) sendBg({ type: 'local-signal', to: peerId, signal: { candidate: event.candidate } });
     };
 
-    if (state.myId && state.myId < peerId) {
-      pc.onnegotiationneeded = async () => {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        sendBg({ type: 'local-signal', to: peerId, signal: { sdp: pc.localDescription } });
-      };
-    }
+    pc.oniceconnectionstatechange = () => {
+      debugLog('iceConnectionState', peerId, pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed' && typeof pc.restartIce === 'function') pc.restartIce();
+    };
+    pc.onconnectionstatechange = () => debugLog('connectionState', peerId, pc.connectionState);
+
+    pc.ontrack = (event) => ui.setRemoteStream(event.streams[0]);
+
+    state.peerConnections.set(peerId, pc);
+    addLocalTracksToPeer(pc); // no-op si pas encore de camera (voir initMedia)
     return pc;
   }
 
   async function handleSignal(from, signal) {
-    const pc = state.peerConnections.get(from) || connectToPeer(from);
+    const pc = connectToPeer(from);
+
     if (signal.sdp) {
+      const isOffer = signal.sdp.type === 'offer';
+      const collision = isOffer && (pc._makingOffer() || pc.signalingState !== 'stable');
+      pc._ignoreOffer = !pc._polite && collision;
+      if (pc._ignoreOffer) {
+        debugLog('Offre ignoree (collision)', from);
+        return;
+      }
+
+      // setRemoteDescription applique un rollback implicite si besoin (pair poli).
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-      if (signal.sdp.type === 'offer') {
+      if (isOffer) {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         sendBg({ type: 'local-signal', to: from, signal: { sdp: pc.localDescription } });
       }
     } else if (signal.candidate) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch (e) { /* ignore */ }
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      } catch (e) {
+        if (!pc._ignoreOffer) debugLog('Erreur addIceCandidate', from, e);
+      }
     }
   }
 
@@ -239,9 +318,39 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
   `;
 
   const widget = root.getElementById('widget');
+  const dragHandle = root.getElementById('drag');
   const localVideo = root.getElementById('local');
   const remoteVideo = root.getElementById('remote');
   const dot = root.getElementById('dot');
+  let playOverlayBtn = null;
+
+  // Sur certains navigateurs (Safari notamment), l'autoplay peut etre bloque
+  // silencieusement : le flux arrive bien mais la video reste noire. On tente
+  // play() et, si refuse, on affiche un bouton pour le relancer au clic.
+  function tryPlay(videoEl) {
+    const p = videoEl.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch((err) => {
+        console.debug('[watch-together-ext] autoplay bloque', videoEl.id, err);
+        showPlayOverlay();
+      });
+    }
+  }
+
+  function showPlayOverlay() {
+    if (playOverlayBtn) return;
+    playOverlayBtn = document.createElement('button');
+    playOverlayBtn.type = 'button';
+    playOverlayBtn.textContent = '▶';
+    playOverlayBtn.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;background:rgba(0,0,0,.8);color:#fff;border:1px solid #5b8cff;border-radius:999px;padding:6px 12px;font-size:16px;cursor:pointer;';
+    playOverlayBtn.addEventListener('click', () => {
+      localVideo.play().catch(() => {});
+      remoteVideo.play().catch(() => {});
+      playOverlayBtn.remove();
+      playOverlayBtn = null;
+    });
+    dragHandle.appendChild(playOverlayBtn);
+  }
 
   // --- Boutons camera / micro ---
   root.getElementById('camBtn').addEventListener('click', (e) => {
@@ -307,9 +416,22 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
       dot.classList.toggle('on', connected);
       if (connected) toast('Connecte au salon Watch Together.');
     },
-    setLocalStream(stream) { localVideo.srcObject = stream; },
-    setRemoteStream(stream) { remoteVideo.srcObject = stream; widget.classList.remove('no-remote'); },
-    clearRemoteVideo() { remoteVideo.srcObject = null; widget.classList.add('no-remote'); },
+    setLocalStream(stream) {
+      if (localVideo.srcObject === stream) return;
+      localVideo.srcObject = stream;
+      tryPlay(localVideo);
+    },
+    setRemoteStream(stream) {
+      widget.classList.remove('no-remote');
+      if (remoteVideo.srcObject === stream) return;
+      remoteVideo.srcObject = stream;
+      tryPlay(remoteVideo);
+    },
+    clearRemoteVideo() {
+      remoteVideo.srcObject = null;
+      widget.classList.add('no-remote');
+      if (playOverlayBtn) { playOverlayBtn.remove(); playOverlayBtn = null; }
+    },
     addChatMessage(from, text, ts, isSelf) {
       const messages = root.getElementById('messages');
       const div = document.createElement('div');

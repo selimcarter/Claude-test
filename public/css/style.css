@@ -251,6 +251,7 @@ button.primary:hover { background: var(--accent-hover); }
 }
 
 .screen-share-viewer {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
@@ -258,6 +259,24 @@ button.primary:hover { background: var(--accent-hover); }
   overflow: hidden;
   margin-bottom: 14px;
   border: 1px solid var(--border);
+}
+
+/* Bouton affiche quand l'autoplay est bloque par le navigateur (frequent sur
+   Safari/iOS) : le flux est bien recu mais ne demarre pas tout seul. */
+.video-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border: 1px solid var(--accent);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .screen-share-viewer video {

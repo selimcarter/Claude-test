@@ -18,6 +18,23 @@ const state = {
 
 const socket = io();
 
+// ===================== Configuration reseau WebRTC =====================
+// STUN public (Google) + TURN public de secours (OpenRelay/Metered). Sans TURN,
+// la connexion camera/ecran echoue silencieusement des que les 2 personnes ne
+// sont pas sur le meme reseau local (NAT restrictif, 4G, Wi-Fi d'entreprise...).
+// Pour un usage intensif, remplacer par un service TURN dedie.
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
+function debugLog(...args) {
+  console.debug('[watch-together]', ...args);
+}
+
 // ===================== Utilitaires =====================
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -105,7 +122,7 @@ socket.on('peer-joined', ({ id, name }) => {
 socket.on('peer-left', ({ id }) => {
   const pc = state.peerConnections.get(id);
   if (pc) { pc.close(); state.peerConnections.delete(id); }
-  document.getElementById('remote-video').srcObject = null;
+  clearVideoElement(document.getElementById('remote-video'));
   document.getElementById('camera-widget').classList.add('no-remote');
 
   const screenPc = state.screenPeerConnections.get(id);
@@ -277,68 +294,200 @@ const remoteVideo = document.getElementById('remote-video');
 const cameraWidget = document.getElementById('camera-widget');
 cameraWidget.classList.add('no-remote');
 
-async function initMedia() {
-  try {
-    state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    localVideo.srcObject = state.localStream;
-  } catch (err) {
-    showToast('Camera/micro indisponibles ou refuses.');
+// --- Aide : assigner un flux a un <video> et gerer le cas ou l'autoplay est
+// bloque par le navigateur (frequent sur Safari/iOS) : on tente play(), et si
+// la promesse est rejetee on affiche un bouton pour lancer la lecture au clic,
+// plutot que de laisser une image noire sans aucune indication. ---
+function clearVideoElement(videoEl) {
+  videoEl.srcObject = null;
+  if (videoEl._playOverlay) {
+    videoEl._playOverlay.remove();
+    videoEl._playOverlay = null;
   }
 }
 
-function connectToPeer(peerId) {
-  if (state.peerConnections.has(peerId)) return;
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-  });
-  state.peerConnections.set(peerId, pc);
-
-  if (state.localStream) {
-    state.localStream.getTracks().forEach((track) => pc.addTrack(track, state.localStream));
+function attachStream(videoEl, stream) {
+  // ontrack se declenche une fois par piste (video puis audio) avec le meme
+  // MediaStream : evite un second appel a play() inutile (source d'un
+  // AbortError benin mais bruyant : "interrupted by a new load request").
+  if (videoEl.srcObject === stream) return;
+  clearVideoElement(videoEl);
+  videoEl.srcObject = stream;
+  const playPromise = videoEl.play();
+  if (playPromise && typeof playPromise.catch === 'function') {
+    playPromise.catch((err) => {
+      debugLog('Autoplay bloque pour', videoEl.id, err);
+      showPlayOverlay(videoEl);
+    });
   }
+}
 
-  pc.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-    cameraWidget.classList.remove('no-remote');
+function showPlayOverlay(videoEl) {
+  if (videoEl._playOverlay) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'video-play-overlay';
+  btn.textContent = '▶ Cliquer pour activer la video';
+  btn.addEventListener('click', () => {
+    videoEl.play().then(() => {
+      btn.remove();
+      videoEl._playOverlay = null;
+    }).catch((e) => debugLog('play() refuse a nouveau', e));
+  });
+  videoEl.insertAdjacentElement('afterend', btn);
+  videoEl._playOverlay = btn;
+}
+
+// --- Message d'erreur precis selon la cause reelle (permission refusee,
+// aucun peripherique, deja utilise par un autre programme/onglet, etc.) ---
+function mediaErrorMessage(err, what) {
+  switch (err && err.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return `Acces ${what} refuse. Autorisez-le dans les parametres du navigateur (icone cadenas/camera dans la barre d'adresse) puis rechargez la page.`;
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return `Aucun peripherique ${what} detecte sur cet appareil.`;
+    case 'NotReadableError':
+      return `${what} deja utilise par une autre application, un autre onglet ou un autre navigateur. Fermez-le puis reessayez.`;
+    default:
+      return `Impossible d'acceder a ${what} (${err && err.message ? err.message : 'erreur inconnue'}).`;
+  }
+}
+
+async function initMedia() {
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast("Camera/micro indisponibles : ce site doit etre ouvert en HTTPS (ou localhost) pour y acceder.", 6000);
+    return;
+  }
+  try {
+    state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.muted = true; // obligatoire pour l'autoplay du flux local
+    attachStream(localVideo, state.localStream);
+
+    // Si une connexion pair-a-pair existait deja sans piste locale (ex: l'autre
+    // personne a rejoint pendant que la permission camera etait en attente),
+    // on ajoute les pistes maintenant : cela declenche onnegotiationneeded
+    // automatiquement et relance la negociation.
+    state.peerConnections.forEach((pc) => addLocalTracksToPeer(pc));
+  } catch (err) {
+    showToast(mediaErrorMessage(err, 'camera/micro'), 6000);
+  }
+}
+
+function addLocalTracksToPeer(pc) {
+  if (!state.localStream) return;
+  const alreadySent = pc.getSenders().map((s) => s.track);
+  state.localStream.getTracks().forEach((track) => {
+    if (!alreadySent.includes(track)) pc.addTrack(track, state.localStream);
+  });
+}
+
+// --- Creation d'une RTCPeerConnection avec "negociation parfaite" : les DEUX
+// pairs peuvent initier une offre des qu'ils ont quelque chose a envoyer (au
+// lieu de restreindre ce droit a un seul cote, ce qui bloquait silencieusement
+// la connexion quand ce cote n'avait pas encore de piste locale). En cas de
+// collision (offres envoyees en meme temps des deux cotes), le pair "poli"
+// annule la sienne au profit de celle recue. Voir MDN "Perfect negotiation". ---
+function createPeerConnection(peerId, { kind, onTrack } = {}) {
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const polite = state.myId > peerId;
+  let makingOffer = false;
+  pc._polite = polite;
+  pc._ignoreOffer = false;
+  pc._makingOffer = () => makingOffer;
+
+  pc.onnegotiationneeded = async () => {
+    try {
+      makingOffer = true;
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription, kind } });
+    } catch (e) {
+      debugLog('Erreur creation offre', kind, peerId, e);
+    } finally {
+      makingOffer = false;
+    }
   };
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      socket.emit('webrtc-signal', { to: peerId, signal: { candidate: event.candidate } });
+      socket.emit('webrtc-signal', { to: peerId, signal: { candidate: event.candidate, kind } });
     }
   };
 
-  if (state.myId < peerId) {
-    pc.onnegotiationneeded = async () => {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription } });
-    };
-  }
+  pc.oniceconnectionstatechange = () => {
+    debugLog(`[${kind || 'camera'}] iceConnectionState(${peerId}) =`, pc.iceConnectionState);
+    if (pc.iceConnectionState === 'failed' && typeof pc.restartIce === 'function') {
+      debugLog(`[${kind || 'camera'}] tentative de restartIce apres echec`, peerId);
+      pc.restartIce();
+    }
+  };
+  pc.onconnectionstatechange = () => debugLog(`[${kind || 'camera'}] connectionState(${peerId}) =`, pc.connectionState);
+  pc.onsignalingstatechange = () => debugLog(`[${kind || 'camera'}] signalingState(${peerId}) =`, pc.signalingState);
+
+  if (onTrack) pc.ontrack = onTrack;
 
   return pc;
 }
 
-socket.on('webrtc-signal', async ({ from, signal }) => {
-  if (signal.kind === 'screen') {
-    await handleScreenSignal(from, signal);
-    return;
-  }
-
-  let pc = state.peerConnections.get(from) || connectToPeer(from);
-
+async function applyIncomingSignal(pc, peerId, signal) {
   if (signal.sdp) {
+    const isOffer = signal.sdp.type === 'offer';
+    const collision = isOffer && (pc._makingOffer() || pc.signalingState !== 'stable');
+    pc._ignoreOffer = !pc._polite && collision;
+    if (pc._ignoreOffer) {
+      debugLog('Offre ignoree (collision, ce pair est impoli)', peerId);
+      return;
+    }
+
+    // Pas besoin de rollback manuel : setRemoteDescription() applique un
+    // rollback implicite automatiquement quand on recoit une offre alors
+    // qu'on est en 'have-local-offer' (comportement standard des navigateurs).
+    // Un rollback manuel separe ici cree une fenetre async supplementaire ou
+    // un onnegotiationneeded concurrent peut interferer et casser l'etat.
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-    if (signal.sdp.type === 'offer') {
+
+    if (isOffer) {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      socket.emit('webrtc-signal', { to: from, signal: { sdp: pc.localDescription } });
+      socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription, kind: signal.kind } });
     }
   } else if (signal.candidate) {
     try {
       await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      if (!pc._ignoreOffer) debugLog('Erreur addIceCandidate', peerId, e);
+    }
   }
+}
+
+function connectToPeer(peerId) {
+  if (state.peerConnections.has(peerId)) return state.peerConnections.get(peerId);
+  const pc = createPeerConnection(peerId, {
+    onTrack: (event) => {
+      attachStream(remoteVideo, event.streams[0]);
+      cameraWidget.classList.remove('no-remote');
+    },
+  });
+  state.peerConnections.set(peerId, pc);
+  addLocalTracksToPeer(pc); // no-op si state.localStream pas encore pret (voir initMedia)
+  return pc;
+}
+
+socket.on('webrtc-signal', async ({ from, signal }) => {
+  const isScreen = signal.kind === 'screen';
+  let pc;
+  if (isScreen) {
+    pc = state.screenPeerConnections.get(from);
+    if (!pc) {
+      pc = createPeerConnection(from, { kind: 'screen', onTrack: (event) => showRemoteScreen(event.streams[0]) });
+      state.screenPeerConnections.set(from, pc);
+    }
+  } else {
+    pc = connectToPeer(from);
+  }
+  await applyIncomingSignal(pc, from, signal);
 });
 
 document.getElementById('toggle-cam-btn').addEventListener('click', (e) => {
@@ -365,10 +514,16 @@ function setShareButtonsState(sharing) {
 
 async function startScreenShare() {
   if (state.screenStream) return;
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    showToast("Partage d'ecran indisponible : ce navigateur ne le supporte pas (courant sur mobile), ou le site n'est pas en HTTPS.", 6000);
+    return;
+  }
   try {
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
   } catch (e) {
-    showToast("Partage d'ecran annule ou refuse.");
+    showToast(e && e.name === 'NotAllowedError'
+      ? "Partage d'ecran annule."
+      : `Partage d'ecran impossible (${e && e.message ? e.message : 'erreur inconnue'}).`);
     return;
   }
   setShareButtonsState(true);
@@ -380,56 +535,15 @@ async function startScreenShare() {
 
 function connectScreenToPeer(peerId) {
   if (!state.screenStream || state.screenPeerConnections.has(peerId)) return;
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const pc = createPeerConnection(peerId, { kind: 'screen' });
   state.screenPeerConnections.set(peerId, pc);
-
   state.screenStream.getTracks().forEach((track) => pc.addTrack(track, state.screenStream));
-
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit('webrtc-signal', { to: peerId, signal: { candidate: event.candidate, kind: 'screen' } });
-    }
-  };
-
-  pc.onnegotiationneeded = async () => {
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription, kind: 'screen' } });
-  };
-
   return pc;
-}
-
-async function handleScreenSignal(from, signal) {
-  let pc = state.screenPeerConnections.get(from);
-  if (!pc) {
-    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-    state.screenPeerConnections.set(from, pc);
-    pc.ontrack = (event) => showRemoteScreen(event.streams[0]);
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('webrtc-signal', { to: from, signal: { candidate: event.candidate, kind: 'screen' } });
-      }
-    };
-  }
-
-  if (signal.sdp) {
-    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-    if (signal.sdp.type === 'offer') {
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('webrtc-signal', { to: from, signal: { sdp: pc.localDescription, kind: 'screen' } });
-    }
-  } else if (signal.candidate) {
-    try {
-      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-    } catch (e) { /* ignore */ }
-  }
 }
 
 function showRemoteScreen(stream) {
   ['netflix', 'prime'].forEach((platform) => {
-    document.getElementById(`screen-video-${platform}`).srcObject = stream;
+    attachStream(document.getElementById(`screen-video-${platform}`), stream);
     document.getElementById(`screen-viewer-${platform}`).classList.remove('hidden');
   });
   showToast("L'autre personne partage son ecran.");
@@ -437,7 +551,7 @@ function showRemoteScreen(stream) {
 
 function clearRemoteScreen() {
   ['netflix', 'prime'].forEach((platform) => {
-    document.getElementById(`screen-video-${platform}`).srcObject = null;
+    clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
   });
 }
