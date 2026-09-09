@@ -64,10 +64,19 @@
 
       <!-- Panneau Netflix -->
       <div id="panel-netflix" class="platform-panel">
+        <div class="screen-share-card">
+          <div class="screen-share-viewer hidden" id="screen-viewer-netflix">
+            <video id="screen-video-netflix" autoplay playsinline></video>
+          </div>
+          <div class="screen-share-controls">
+            <button class="share-screen-btn" data-platform="netflix">Partager mon ecran (Netflix)</button>
+            <button class="stop-share-btn hidden" data-platform="netflix">Arreter le partage</button>
+            <p class="hint">Une seule personne (celle qui a Netflix) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Netflix.</p>
+          </div>
+        </div>
         <div class="manual-sync-card">
-          <h2>Netflix</h2>
-          <p class="warning">Netflix bloque toute integration externe (DRM). Impossible de piloter leur lecteur depuis ce site.
-          Ouvrez Netflix dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
+          <h2>Netflix - mode manuel (sans partage d'ecran)</h2>
+          <p class="warning">Si chacun a son propre compte Netflix sur son appareil : ouvrez Netflix dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
           <a href="https://www.netflix.com" target="_blank" rel="noopener" class="open-btn">Ouvrir Netflix dans un nouvel onglet</a>
           <div class="sync-tools">
             <button class="countdown-btn" data-seconds="5">Lancer un compte a rebours (5s)</button>
@@ -80,9 +89,19 @@
 
       <!-- Panneau Prime Video -->
       <div id="panel-prime" class="platform-panel">
+        <div class="screen-share-card">
+          <div class="screen-share-viewer hidden" id="screen-viewer-prime">
+            <video id="screen-video-prime" autoplay playsinline></video>
+          </div>
+          <div class="screen-share-controls">
+            <button class="share-screen-btn" data-platform="prime">Partager mon ecran (Prime Video)</button>
+            <button class="stop-share-btn hidden" data-platform="prime">Arreter le partage</button>
+            <p class="hint">Une seule personne (celle qui a Prime Video) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Prime.</p>
+          </div>
+        </div>
         <div class="manual-sync-card">
-          <h2>Amazon Prime Video</h2>
-          <p class="warning">Prime Video bloque lui aussi toute integration externe (DRM). Ouvrez Prime Video dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
+          <h2>Prime Video - mode manuel (sans partage d'ecran)</h2>
+          <p class="warning">Si chacun a son propre compte Prime Video sur son appareil : ouvrez Prime Video dans un autre onglet chacun de votre cote, puis utilisez les outils ci-dessous pour vous caler.</p>
           <a href="https://www.primevideo.com" target="_blank" rel="noopener" class="open-btn">Ouvrir Prime Video dans un nouvel onglet</a>
           <div class="sync-tools">
             <button class="countdown-btn" data-seconds="5">Lancer un compte a rebours (5s)</button>

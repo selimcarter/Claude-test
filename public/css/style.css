@@ -241,6 +241,55 @@ button.primary:hover { background: var(--accent-hover); }
   pointer-events: none;
 }
 
+.screen-share-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 900px;
+  margin-bottom: 16px;
+}
+
+.screen-share-viewer {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+}
+
+.screen-share-viewer video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.screen-share-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.share-screen-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.share-screen-btn:hover { background: var(--accent-hover); }
+
+.stop-share-btn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
+
 .manual-sync-card {
   background: var(--panel);
   border: 1px solid var(--border);

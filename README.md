@@ -6,9 +6,10 @@ Site pour regarder du contenu a distance avec une autre personne : chat texte, c
 
 - **Salons** : creez un salon (code a 6 caracteres) et partagez le lien pour que l'autre personne rejoigne (2 personnes par salon).
 - **YouTube** : synchronisation automatique et reelle de la lecture/pause/position via l'API officielle YouTube IFrame.
-- **Netflix / Amazon Prime** : ces plateformes bloquent toute integration dans une iframe (DRM, headers anti-iframe, aucune API de lecture publique) : un site web seul ne peut donc pas piloter leur lecteur a distance.
-  - **Avec l'extension navigateur fournie** (`extension/`, voir son README) : synchronisation automatique reelle de la lecture/pause/position, exactement comme sur YouTube, plus camera et chat directement sur la page Netflix/Prime. C'est la meme technique utilisee par des services comme Teleparty.
-  - **Sans extension**, le site propose un mode manuel en secours : un bouton ouvre la plateforme dans un nouvel onglet, un compte a rebours partage permet de lancer la lecture en meme temps, et un bouton "Pause maintenant !" notifie l'autre personne.
+- **Netflix / Amazon Prime** : ces plateformes bloquent toute integration dans une iframe (DRM, headers anti-iframe, aucune API de lecture publique) : un site web seul ne peut donc pas piloter leur lecteur a distance. Trois options selon le cas :
+  - **Partage d'ecran** (recommande quand une seule personne a le compte Netflix/Prime) : cette personne clique "Partager mon ecran" sur le site, l'autre voit sa lecture en direct des qu'elle rejoint le salon, sans rien installer et sans avoir son propre compte. Ideal quand l'autre personne est sur mobile.
+  - **Extension navigateur** (quand chacun a son propre compte Netflix/Prime et veut vraiment 2 lectures synchronisees) : voir `extension/` ci-dessous, synchronisation automatique reelle de la lecture/pause/position, comme sur YouTube. Doit etre installee des les deux cotes (necessite un navigateur desktop, ne fonctionne pas sur mobile).
+  - **Mode manuel** en dernier recours (sans rien installer, chacun avec son propre compte) : un bouton ouvre la plateforme dans un nouvel onglet, un compte a rebours partage permet de lancer la lecture en meme temps, et un bouton "Pause maintenant !" notifie l'autre personne.
 - **Camera** : chaque personne partage sa webcam (WebRTC pair-a-pair). La bulle video est deplacable a la souris/au doigt n'importe ou sur l'ecran (position sauvegardee localement).
 - **Chat** : messages texte en temps reel dans le salon.
 

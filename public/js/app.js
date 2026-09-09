@@ -12,6 +12,8 @@ const state = {
   peerConnections: new Map(), // id -> RTCPeerConnection
   camOn: true,
   micOn: true,
+  screenStream: null,
+  screenPeerConnections: new Map(), // id -> RTCPeerConnection (partage d'ecran)
 };
 
 const socket = io();
@@ -97,6 +99,7 @@ socket.on('joined', ({ self, peers }) => {
 socket.on('peer-joined', ({ id, name }) => {
   showToast(`${name} a rejoint le salon.`);
   connectToPeer(id);
+  if (state.screenStream) connectScreenToPeer(id);
 });
 
 socket.on('peer-left', ({ id }) => {
@@ -104,6 +107,10 @@ socket.on('peer-left', ({ id }) => {
   if (pc) { pc.close(); state.peerConnections.delete(id); }
   document.getElementById('remote-video').srcObject = null;
   document.getElementById('camera-widget').classList.add('no-remote');
+
+  const screenPc = state.screenPeerConnections.get(id);
+  if (screenPc) { screenPc.close(); state.screenPeerConnections.delete(id); }
+  clearRemoteScreen();
 });
 
 socket.on('room-users', (users) => renderPresence(users));
@@ -313,6 +320,11 @@ function connectToPeer(peerId) {
 }
 
 socket.on('webrtc-signal', async ({ from, signal }) => {
+  if (signal.kind === 'screen') {
+    await handleScreenSignal(from, signal);
+    return;
+  }
+
   let pc = state.peerConnections.get(from) || connectToPeer(from);
 
   if (signal.sdp) {
@@ -339,6 +351,121 @@ document.getElementById('toggle-mic-btn').addEventListener('click', (e) => {
   state.micOn = !state.micOn;
   if (state.localStream) state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; });
   e.target.classList.toggle('off', !state.micOn);
+});
+
+// ===================== Partage d'ecran (Netflix / Prime) =====================
+// Une seule personne (celle qui a le compte Netflix/Prime) partage son ecran ;
+// l'autre le regarde en direct, sans rien installer et sans avoir son propre
+// compte. C'est un flux WebRTC separe de celui de la camera.
+
+function setShareButtonsState(sharing) {
+  document.querySelectorAll('.share-screen-btn').forEach((b) => b.classList.toggle('hidden', sharing));
+  document.querySelectorAll('.stop-share-btn').forEach((b) => b.classList.toggle('hidden', !sharing));
+}
+
+async function startScreenShare() {
+  if (state.screenStream) return;
+  try {
+    state.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+  } catch (e) {
+    showToast("Partage d'ecran annule ou refuse.");
+    return;
+  }
+  setShareButtonsState(true);
+  state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
+
+  // On partage vers tous les pairs actuellement connus dans le salon.
+  state.peerConnections.forEach((_, peerId) => connectScreenToPeer(peerId));
+}
+
+function connectScreenToPeer(peerId) {
+  if (!state.screenStream || state.screenPeerConnections.has(peerId)) return;
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  state.screenPeerConnections.set(peerId, pc);
+
+  state.screenStream.getTracks().forEach((track) => pc.addTrack(track, state.screenStream));
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit('webrtc-signal', { to: peerId, signal: { candidate: event.candidate, kind: 'screen' } });
+    }
+  };
+
+  pc.onnegotiationneeded = async () => {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription, kind: 'screen' } });
+  };
+
+  return pc;
+}
+
+async function handleScreenSignal(from, signal) {
+  let pc = state.screenPeerConnections.get(from);
+  if (!pc) {
+    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    state.screenPeerConnections.set(from, pc);
+    pc.ontrack = (event) => showRemoteScreen(event.streams[0]);
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('webrtc-signal', { to: from, signal: { candidate: event.candidate, kind: 'screen' } });
+      }
+    };
+  }
+
+  if (signal.sdp) {
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    if (signal.sdp.type === 'offer') {
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit('webrtc-signal', { to: from, signal: { sdp: pc.localDescription, kind: 'screen' } });
+    }
+  } else if (signal.candidate) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    } catch (e) { /* ignore */ }
+  }
+}
+
+function showRemoteScreen(stream) {
+  ['netflix', 'prime'].forEach((platform) => {
+    document.getElementById(`screen-video-${platform}`).srcObject = stream;
+    document.getElementById(`screen-viewer-${platform}`).classList.remove('hidden');
+  });
+  showToast("L'autre personne partage son ecran.");
+}
+
+function clearRemoteScreen() {
+  ['netflix', 'prime'].forEach((platform) => {
+    document.getElementById(`screen-video-${platform}`).srcObject = null;
+    document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
+  });
+}
+
+function stopScreenShare() {
+  if (state.screenStream) {
+    state.screenStream.getTracks().forEach((t) => t.stop());
+    state.screenStream = null;
+  }
+  state.screenPeerConnections.forEach((pc) => pc.close());
+  state.screenPeerConnections.clear();
+  setShareButtonsState(false);
+  socket.emit('screen-share-stopped');
+}
+
+socket.on('screen-share-stopped', () => {
+  const pc = state.screenPeerConnections;
+  pc.forEach((c) => c.close());
+  pc.clear();
+  clearRemoteScreen();
+  showToast("Le partage d'ecran s'est arrete.");
+});
+
+document.querySelectorAll('.share-screen-btn').forEach((btn) => {
+  btn.addEventListener('click', startScreenShare);
+});
+document.querySelectorAll('.stop-share-btn').forEach((btn) => {
+  btn.addEventListener('click', stopScreenShare);
 });
 
 // ===================== Bulle camera deplacable =====================

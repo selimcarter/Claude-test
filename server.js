@@ -98,10 +98,15 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('manual-pause-ping', { from: socket.data.name || 'Invite' });
   });
 
-  // --- WebRTC signaling relay (camera) ---
+  // --- WebRTC signaling relay (camera et partage d'ecran) ---
   socket.on('webrtc-signal', ({ to, signal }) => {
     if (!to) return;
     io.to(to).emit('webrtc-signal', { from: socket.id, signal });
+  });
+
+  socket.on('screen-share-stopped', () => {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit('screen-share-stopped');
   });
 
   socket.on('disconnect', () => {
