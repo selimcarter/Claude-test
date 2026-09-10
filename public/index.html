@@ -68,10 +68,10 @@
           <div class="screen-share-viewer hidden" id="screen-viewer-netflix">
             <video id="screen-video-netflix" autoplay playsinline></video>
             <button type="button" class="fullscreen-btn" data-platform="netflix" title="Plein ecran">⛶</button>
-            <div class="remote-request-controls hidden" id="remote-request-netflix">
-              <button type="button" class="request-pause-btn" data-platform="netflix">⏸<br>Pause</button>
-              <button type="button" class="request-forward-btn" data-platform="netflix">⏩<br>Avancer</button>
-            </div>
+          </div>
+          <div class="remote-request-controls hidden" id="remote-request-netflix">
+            <button type="button" class="request-pause-btn" data-platform="netflix">⏸ Demander une pause</button>
+            <button type="button" class="request-forward-btn" data-platform="netflix">⏩ Demander d'avancer</button>
           </div>
           <div class="screen-share-controls">
             <button class="share-screen-btn" data-platform="netflix">Partager mon ecran (Netflix)</button>
@@ -98,10 +98,10 @@
           <div class="screen-share-viewer hidden" id="screen-viewer-prime">
             <video id="screen-video-prime" autoplay playsinline></video>
             <button type="button" class="fullscreen-btn" data-platform="prime" title="Plein ecran">⛶</button>
-            <div class="remote-request-controls hidden" id="remote-request-prime">
-              <button type="button" class="request-pause-btn" data-platform="prime">⏸<br>Pause</button>
-              <button type="button" class="request-forward-btn" data-platform="prime">⏩<br>Avancer</button>
-            </div>
+          </div>
+          <div class="remote-request-controls hidden" id="remote-request-prime">
+            <button type="button" class="request-pause-btn" data-platform="prime">⏸ Demander une pause</button>
+            <button type="button" class="request-forward-btn" data-platform="prime">⏩ Demander d'avancer</button>
           </div>
           <div class="screen-share-controls">
             <button class="share-screen-btn" data-platform="prime">Partager mon ecran (Prime Video)</button>
@@ -149,6 +149,7 @@
 </section>
 
 <div id="toast" class="toast hidden"></div>
+<div id="request-popup" class="request-popup hidden"><span id="request-popup-text"></span></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="/socket.io/socket.io.js"></script>

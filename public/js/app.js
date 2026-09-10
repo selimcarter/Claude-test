@@ -52,6 +52,16 @@ function showToast(msg, duration = 3000) {
   showToast._t = setTimeout(() => toast.classList.add('hidden'), duration);
 }
 
+// Notification impossible a manquer, au centre de l'ecran : utilisee pour les
+// demandes de pause/avance recues par la personne qui partage son ecran.
+function showRequestPopup(msg, duration = 4000) {
+  const popup = document.getElementById('request-popup');
+  document.getElementById('request-popup-text').textContent = msg;
+  popup.classList.remove('hidden');
+  clearTimeout(showRequestPopup._t);
+  showRequestPopup._t = setTimeout(() => popup.classList.add('hidden'), duration);
+}
+
 function extractYoutubeId(input) {
   const trimmed = input.trim();
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
@@ -351,11 +361,11 @@ socket.on('manual-countdown', ({ startAt }) => {
 });
 
 socket.on('manual-pause-ping', ({ from }) => {
-  showToast(`${from} demande une pause !`, 4000);
+  showRequestPopup(`⏸ ${from} demande une pause !`);
 });
 
 socket.on('manual-forward-ping', ({ from }) => {
-  showToast(`${from} demande d'avancer la lecture !`, 4000);
+  showRequestPopup(`⏩ ${from} demande d'avancer la lecture !`);
 });
 
 // ===================== Camera / WebRTC =====================
@@ -717,6 +727,16 @@ function exitCssFullscreen() {
   });
   document.body.appendChild(cameraWidget);
   document.body.style.overflow = '';
+
+  // L'API d'orientation n'accepte de deverrouiller que si l'API plein ecran
+  // native a reellement ete engagee (voir plus bas) ; on essaie les deux,
+  // silencieusement, sans bloquer si l'une des deux n'est pas disponible.
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+  if (screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch (e) { /* ignore */ }
+  }
 }
 
 document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
@@ -732,11 +752,38 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     document.body.style.overflow = 'hidden';
     btn.textContent = '✕';
     btn.title = 'Quitter le plein ecran';
+
+    // Le "faux" plein ecran CSS marche partout (y compris iOS Safari), mais
+    // l'API native est en plus tentee ici : la rotation forcee en paysage
+    // (screen.orientation.lock) n'est autorisee par le navigateur que si le
+    // document est reellement en plein ecran natif. Sur iOS, requestFullscreen
+    // sur un <div> n'est pas supporte : ca echoue silencieusement, la vue
+    // reste en CSS fullscreen quand meme (juste sans rotation forcee - il
+    // suffit alors de tourner le telephone manuellement).
+    const request = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
+    if (request) {
+      Promise.resolve(request.call(viewer))
+        .then(() => {
+          if (screen.orientation && screen.orientation.lock) {
+            return screen.orientation.lock('landscape');
+          }
+        })
+        .catch((e) => debugLog('plein ecran natif / rotation non disponible', e));
+    }
   });
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.querySelector('.screen-share-viewer.css-fullscreen')) {
+    exitCssFullscreen();
+  }
+});
+
+// Si le plein ecran natif est quitte par un autre moyen que notre bouton
+// (bouton du navigateur, glissement vers le bas sur mobile...), on remet
+// l'etat CSS en phase.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.querySelector('.screen-share-viewer.css-fullscreen')) {
     exitCssFullscreen();
   }
 });

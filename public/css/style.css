@@ -328,34 +328,56 @@ button.primary:hover { background: var(--accent-hover); }
   gap: 8px;
 }
 
-/* Overlay centre sur la video, gros et bien visible (plutot que de petits
-   boutons discrets sous la video, faciles a manquer). */
+/* En dehors du lecteur (jamais par-dessus la video, pour ne pas la cacher a
+   celui qui regarde), mais assez grands pour rester bien visibles. */
 .remote-request-controls {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 5;
   display: flex;
-  gap: 20px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .request-pause-btn, .request-forward-btn {
-  background: rgba(0, 0, 0, 0.7);
+  flex: 1;
+  background: var(--panel-2);
   border: 2px solid var(--accent);
   color: #fff;
   font-weight: 700;
   font-size: 15px;
-  line-height: 1.6;
-  padding: 18px 28px;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 12px;
   cursor: pointer;
-  text-align: center;
 }
 
 .request-pause-btn:hover, .request-forward-btn:hover {
-  background: rgba(0, 0, 0, 0.88);
+  background: #262b35;
   border-color: var(--accent-hover);
+}
+
+/* Notification bien visible, au centre de l'ecran, cote de la personne qui
+   partage : elle ne doit pas pouvoir la manquer quand on lui demande une
+   pause ou d'avancer la lecture. */
+.request-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 300;
+  background: rgba(15, 17, 21, 0.96);
+  border: 2px solid var(--accent);
+  color: #fff;
+  padding: 28px 44px;
+  border-radius: 16px;
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  max-width: 80vw;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  animation: request-popup-in 0.2s ease-out;
+}
+
+@keyframes request-popup-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 .share-screen-btn {
