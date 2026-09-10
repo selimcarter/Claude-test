@@ -15,6 +15,12 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
+  // Permet a Socket.IO de restaurer tout seul les salons/donnees d'une
+  // connexion apres une coupure tres courte, sans que le client ait besoin
+  // de rejoindre manuellement (filet de securite supplementaire cote serveur).
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+  },
 });
 
 const PORT = process.env.PORT || 3000;

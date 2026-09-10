@@ -109,24 +109,36 @@ function enterRoom(roomId, name) {
 // qui n'existent plus.
 let hasJoinedOnce = false;
 
+// Sur un reseau instable, la connexion peut se couper/revenir plusieurs fois
+// de suite en quelques secondes ("flapping"). Reagir a CHAQUE reconnexion en
+// reconstruisant tout (WebRTC, video) rend ce flapping tres visible et
+// perturbateur. On attend plutot que la connexion soit stable un court
+// instant avant d'agir ; un nouveau decrochage pendant l'attente annule
+// l'action prevue.
+let reconnectDebounceTimer = null;
+
 socket.on('connect', () => {
   if (!hasJoinedOnce || !state.roomId) return;
-  debugLog('Reconnecte au serveur : on rejoint a nouveau le salon.');
-  showToast('Connexion retablie, on se reconnecte au salon...', 3000);
+  clearTimeout(reconnectDebounceTimer);
+  reconnectDebounceTimer = setTimeout(() => {
+    debugLog('Connexion stabilisee : on rejoint a nouveau le salon.');
+    showToast('Connexion retablie, on se reconnecte au salon...', 3000);
 
-  state.peerConnections.forEach((pc) => pc.close());
-  state.peerConnections.clear();
-  state.screenPeerConnections.forEach((pc) => pc.close());
-  state.screenPeerConnections.clear();
-  clearVideoElement(remoteVideo);
-  cameraWidget.classList.add('no-remote');
-  clearScreenViewer();
+    state.peerConnections.forEach((pc) => pc.close());
+    state.peerConnections.clear();
+    state.screenPeerConnections.forEach((pc) => pc.close());
+    state.screenPeerConnections.clear();
+    clearVideoElement(remoteVideo);
+    cameraWidget.classList.add('no-remote');
+    clearScreenViewer();
 
-  socket.emit('join-room', { roomId: state.roomId, name: state.myName });
+    socket.emit('join-room', { roomId: state.roomId, name: state.myName });
+  }, 1500);
 });
 
 socket.on('disconnect', () => {
   if (!hasJoinedOnce) return;
+  clearTimeout(reconnectDebounceTimer);
   showToast('Connexion au serveur perdue, reconnexion en cours...', 5000);
 });
 
@@ -692,29 +704,40 @@ document.querySelectorAll('.stop-share-btn').forEach((btn) => {
 });
 
 // ===================== Plein ecran (avec la camera qui reste visible) =====================
-// L'API plein ecran ne montre que l'element mis en plein ecran et ses
-// descendants : la bulle camera (position fixed, en dehors de la zone video)
-// disparaitrait donc en plein ecran si on ne la deplacait pas a l'interieur
-// du conteneur video le temps du plein ecran.
+// "Faux" plein ecran en CSS (position fixed sur tout le viewport) plutot que
+// l'API Fullscreen native : Safari sur iPhone ne supporte pas requestFullscreen
+// sur un <div> (seulement sur <video>, sans possibilite d'afficher la camera
+// par-dessus), ce qui empechait le plein ecran de fonctionner pour celui qui
+// rejoint depuis un iPhone. Cette approche fonctionne partout de la meme facon.
+function exitCssFullscreen() {
+  document.querySelectorAll('.screen-share-viewer.css-fullscreen').forEach((viewer) => {
+    viewer.classList.remove('css-fullscreen');
+    const btn = viewer.querySelector('.fullscreen-btn');
+    if (btn) { btn.textContent = '⛶'; btn.title = 'Plein ecran'; }
+  });
+  document.body.appendChild(cameraWidget);
+  document.body.style.overflow = '';
+}
+
 document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const viewer = document.getElementById(`screen-viewer-${btn.dataset.platform}`);
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
+    if (viewer.classList.contains('css-fullscreen')) {
+      exitCssFullscreen();
       return;
     }
+    exitCssFullscreen(); // au cas ou un autre onglet etait deja en plein ecran
+    viewer.classList.add('css-fullscreen');
     viewer.appendChild(cameraWidget);
-    const request = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
-    if (request) {
-      request.call(viewer).catch((e) => debugLog('requestFullscreen refuse', e));
-    }
+    document.body.style.overflow = 'hidden';
+    btn.textContent = '✕';
+    btn.title = 'Quitter le plein ecran';
   });
 });
 
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) {
-    // Retour a la position normale de la bulle camera dans le document.
-    document.body.appendChild(cameraWidget);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.querySelector('.screen-share-viewer.css-fullscreen')) {
+    exitCssFullscreen();
   }
 });
 

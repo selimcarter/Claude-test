@@ -305,12 +305,20 @@ button.primary:hover { background: var(--accent-hover); }
 
 .fullscreen-btn:hover { background: rgba(0, 0, 0, 0.85); }
 
-/* En plein ecran, la bulle camera est deplacee a l'interieur du conteneur
-   video (seuls ses descendants restent visibles en plein ecran) : on
-   s'assure qu'elle garde une position coherente une fois a l'interieur. */
-.screen-share-viewer:fullscreen .camera-widget {
-  top: 16px;
-  right: 16px;
+/* "Faux" plein ecran en CSS plutot que l'API Fullscreen native : celle-ci
+   n'est pas supportee sur un <div> par Safari iOS (seulement sur <video>,
+   et sans possibilite d'afficher la camera par-dessus). Cette approche
+   fonctionne de la meme facon sur tous les navigateurs/appareils. */
+.screen-share-viewer.css-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  z-index: 1000;
+  border-radius: 0;
+  border: none;
+  margin: 0;
 }
 
 .screen-share-controls {
@@ -320,22 +328,35 @@ button.primary:hover { background: var(--accent-hover); }
   gap: 8px;
 }
 
+/* Overlay centre sur la video, gros et bien visible (plutot que de petits
+   boutons discrets sous la video, faciles a manquer). */
 .remote-request-controls {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
   display: flex;
-  gap: 8px;
-  margin-bottom: 14px;
+  gap: 20px;
 }
 
 .request-pause-btn, .request-forward-btn {
-  flex: 1;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-weight: 600;
-  padding: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 18px 28px;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
 }
 
-.request-pause-btn:hover, .request-forward-btn:hover { background: #262b35; }
+.request-pause-btn:hover, .request-forward-btn:hover {
+  background: rgba(0, 0, 0, 0.88);
+  border-color: var(--accent-hover);
+}
 
 .share-screen-btn {
   background: var(--accent);
