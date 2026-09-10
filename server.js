@@ -7,7 +7,15 @@ const { WebSocketServer } = require('ws');
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer);
+// pingTimeout plus tolerant : sur un reseau mobile (4G/5G), de courtes
+// coupures/handoffs sont normales. Avec la valeur par defaut (20s), Socket.IO
+// declare la connexion morte trop vite, ce qui declenche une reconnexion
+// (et donc une reinitialisation caméra/partage d'ecran cote client) pour de
+// simples micro-coupures qui se seraient resorbees d'elles-memes.
+const io = new Server(httpServer, {
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
 
 const PORT = process.env.PORT || 3000;
 
