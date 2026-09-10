@@ -305,6 +305,21 @@ document.querySelectorAll('.pause-ping-btn').forEach((btn) => {
   });
 });
 
+// Memes signaux, mais depuis la vue "je regarde le partage d'ecran de l'autre"
+// (boutons visibles uniquement cote spectateur, voir showScreenPreview plus bas).
+document.querySelectorAll('.request-pause-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    socket.emit('manual-pause-ping');
+    showToast('Demande de pause envoyee.');
+  });
+});
+document.querySelectorAll('.request-forward-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    socket.emit('manual-forward-ping');
+    showToast("Demande d'avancer envoyee.");
+  });
+});
+
 socket.on('manual-countdown', ({ startAt }) => {
   const displays = [
     document.getElementById('countdown-display-netflix'),
@@ -325,6 +340,10 @@ socket.on('manual-countdown', ({ startAt }) => {
 
 socket.on('manual-pause-ping', ({ from }) => {
   showToast(`${from} demande une pause !`, 4000);
+});
+
+socket.on('manual-forward-ping', ({ from }) => {
+  showToast(`${from} demande d'avancer la lecture !`, 4000);
 });
 
 // ===================== Camera / WebRTC =====================
@@ -630,6 +649,9 @@ function showScreenPreview(stream, { isRemote }) {
     // l'onglet Netflix/Prime partage, sinon on l'entendrait en double (echo).
     videoEl.muted = !isRemote;
     document.getElementById(`screen-viewer-${platform}`).classList.remove('hidden');
+    // Les boutons "demander pause/avancer" n'ont de sens que cote spectateur
+    // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
+    document.getElementById(`remote-request-${platform}`).classList.toggle('hidden', !isRemote);
   });
   if (isRemote) showToast("L'autre personne partage son ecran.");
 }
@@ -638,6 +660,7 @@ function clearScreenViewer() {
   ['netflix', 'prime'].forEach((platform) => {
     clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
+    document.getElementById(`remote-request-${platform}`).classList.add('hidden');
   });
 }
 

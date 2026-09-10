@@ -320,6 +320,23 @@ button.primary:hover { background: var(--accent-hover); }
   gap: 8px;
 }
 
+.remote-request-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.request-pause-btn, .request-forward-btn {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  padding: 10px;
+}
+
+.request-pause-btn:hover, .request-forward-btn:hover { background: #262b35; }
+
 .share-screen-btn {
   background: var(--accent);
   border-color: var(--accent);

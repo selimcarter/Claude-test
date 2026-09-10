@@ -106,6 +106,11 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('manual-pause-ping', { from: socket.data.name || 'Invite' });
   });
 
+  socket.on('manual-forward-ping', () => {
+    if (!currentRoom) return;
+    socket.to(currentRoom).emit('manual-forward-ping', { from: socket.data.name || 'Invite' });
+  });
+
   // --- WebRTC signaling relay (camera et partage d'ecran) ---
   socket.on('webrtc-signal', ({ to, signal }) => {
     if (!to) return;
