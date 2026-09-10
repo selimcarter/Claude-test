@@ -27,6 +27,38 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// STUN/TURN de secours utilise tant que METERED_API_KEY/METERED_DOMAIN ne
+// sont pas configures (voir README) : le TURN public OpenRelay est partage
+// par des milliers de projets dans le monde, donc peu fiable en usage reel.
+const FALLBACK_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
+// Le client demande sa config ICE ici plutot que de l'avoir codee en dur :
+// permet de brancher un compte TURN dedie (identifiants prives, jamais
+// exposes dans le code source) juste via des variables d'environnement sur
+// Render, sans toucher au code.
+app.get('/api/ice-servers', async (req, res) => {
+  const apiKey = process.env.METERED_API_KEY;
+  const domain = process.env.METERED_DOMAIN;
+  if (!apiKey || !domain) {
+    return res.json(FALLBACK_ICE_SERVERS);
+  }
+  try {
+    const response = await fetch(`https://${domain}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`);
+    if (!response.ok) throw new Error(`Metered a repondu ${response.status}`);
+    const iceServers = await response.json();
+    res.json(iceServers);
+  } catch (err) {
+    console.error('Impossible de recuperer les identifiants TURN Metered, utilisation du secours:', err.message);
+    res.json(FALLBACK_ICE_SERVERS);
+  }
+});
+
 // roomId -> { users: Map<socketId, name> }
 const rooms = new Map();
 

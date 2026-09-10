@@ -21,17 +21,32 @@ const state = {
 const socket = io();
 
 // ===================== Configuration reseau WebRTC =====================
-// STUN public (Google) + TURN public de secours (OpenRelay/Metered). Sans TURN,
-// la connexion camera/ecran echoue silencieusement des que les 2 personnes ne
-// sont pas sur le meme reseau local (NAT restrictif, 4G, Wi-Fi d'entreprise...).
-// Pour un usage intensif, remplacer par un service TURN dedie.
-const ICE_SERVERS = [
+// STUN public (Google) + TURN public de secours (OpenRelay), utilise tant que
+// le serveur n'a pas de compte TURN dedie configure (voir server.js et le
+// README) : ce TURN public est partage par des milliers de projets dans le
+// monde, donc peu fiable en usage reel (saccades, connexions qui echouent).
+let ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
+
+// Le serveur peut fournir une config TURN dediee (identifiants prives, jamais
+// exposes dans le code source) : on la recupere des le chargement de la page,
+// pour que les connexions creees ensuite (des qu'on rejoint un salon) en
+// beneficient. Si rien n'est configure cote serveur, il renvoie simplement le
+// meme secours OpenRelay, donc rien ne change.
+fetch('/api/ice-servers')
+  .then((r) => r.json())
+  .then((servers) => {
+    if (Array.isArray(servers) && servers.length > 0) {
+      ICE_SERVERS = servers;
+      debugLog('Configuration ICE recuperee du serveur :', servers.length, 'entree(s)');
+    }
+  })
+  .catch((e) => debugLog('Impossible de recuperer la config ICE, on garde le secours integre', e));
 
 function debugLog(...args) {
   console.debug('[watch-together]', ...args);

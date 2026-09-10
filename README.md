@@ -39,6 +39,21 @@ Ce site a besoin d'un serveur qui tourne en continu (Socket.IO garde une connexi
 
 Note : sur le plan gratuit de Render, le serveur s'endort apres une periode d'inactivite et met quelques secondes a se reveiller au premier chargement.
 
+## Ameliorer la fiabilite (serveur TURN dedie)
+
+Par defaut, le site utilise un serveur TURN **public et gratuit** (OpenRelay) pour que la camera/le partage d'ecran fonctionnent meme quand les deux personnes ne sont pas sur le meme reseau. Ce TURN public est partage par des milliers de projets dans le monde : ca marche, mais ca peut saccader ou echouer selon la charge du moment.
+
+Pour une connexion plus fiable, configurez un compte TURN dedie gratuit :
+
+1. Creez un compte sur [dashboard.metered.ca/signup](https://dashboard.metered.ca/signup) (offre gratuite).
+2. Dans le tableau de bord, creez une application ("Add Application") : notez son **nom de domaine** (ex: `monapp.metered.live`) et votre **Secret API Key**.
+3. Sur Render, ouvrez votre service → **Environment** → ajoutez deux variables :
+   - `METERED_DOMAIN` = le nom de domaine (sans le `.metered.live`, juste `monapp`)
+   - `METERED_API_KEY` = votre cle secrete
+4. Render redeploie automatiquement avec ces variables. Le site les utilise desormais a la place du TURN public, sans aucun changement de code necessaire.
+
+Sans ces variables, le site continue de fonctionner normalement avec le TURN public gratuit (aucune configuration n'est obligatoire).
+
 ## Extension navigateur (Netflix / Prime Video)
 
 Voir [`extension/README.md`](extension/README.md) pour l'installer et l'utiliser. Elle se charge en "mode developpeur" dans Chrome/Edge/Brave et se connecte au meme serveur que le site (via un canal WebSocket dedie, `/ext-ws`).
