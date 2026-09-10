@@ -15,6 +15,7 @@ const state = {
   screenStream: null,
   screenPeerConnections: new Map(), // id -> RTCPeerConnection (partage d'ecran)
   currentPlatform: 'youtube',
+  activeSharePlatform: null, // plateforme verrouillee pendant un partage d'ecran actif
 };
 
 const socket = io();
@@ -189,7 +190,10 @@ socket.on('joined', ({ self, peers }) => {
 socket.on('peer-joined', ({ id, name }) => {
   showToast(`${name} a rejoint le salon.`);
   connectToPeer(id);
-  if (state.screenStream) connectScreenToPeer(id);
+  if (state.screenStream) {
+    connectScreenToPeer(id);
+    socket.emit('screen-share-platform', { platform: state.activeSharePlatform });
+  }
   // La personne qui rejoint n'a pas vu les clics d'onglet precedents : on lui
   // signale sur quel onglet on se trouve actuellement, sinon elle reste sur
   // l'onglet par defaut (YouTube) jusqu'au prochain changement d'onglet.
@@ -231,9 +235,34 @@ function setPlatform(platform, { broadcast } = { broadcast: true }) {
   if (broadcast) socket.emit('platform-select', { platform });
 }
 tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => setPlatform(btn.dataset.platform));
+  btn.addEventListener('click', () => {
+    // Les onglets sont synchronises entre les 2 personnes : changer d'onglet
+    // pendant un partage d'ecran actif cacherait la video en cours chez tout
+    // le monde (le panneau video se retrouve masque). On bloque donc le
+    // changement tant qu'un partage est actif sur une autre plateforme.
+    if (state.activeSharePlatform && btn.dataset.platform !== state.activeSharePlatform) {
+      showToast("Impossible de changer d'onglet pendant un partage d'ecran. Arretez d'abord le partage.", 4000);
+      return;
+    }
+    setPlatform(btn.dataset.platform);
+  });
 });
 socket.on('platform-select', ({ platform }) => setPlatform(platform, { broadcast: false }));
+
+// Verrouille les onglets sur la plateforme partagee (empeche de naviguer
+// ailleurs et de masquer la video en cours, cote partageur comme spectateur).
+function lockTabsToPlatform(platform) {
+  state.activeSharePlatform = platform;
+  setPlatform(platform, { broadcast: false });
+  tabButtons.forEach((b) => b.classList.toggle('locked', b.dataset.platform !== platform));
+}
+
+function unlockTabs() {
+  state.activeSharePlatform = null;
+  tabButtons.forEach((b) => b.classList.remove('locked'));
+}
+
+socket.on('screen-share-platform', ({ platform }) => lockTabsToPlatform(platform));
 
 // ===================== Chat =====================
 const chatMessages = document.getElementById('chat-messages');
@@ -635,7 +664,7 @@ function setShareButtonsState(sharing) {
   document.querySelectorAll('.stop-share-btn').forEach((b) => b.classList.toggle('hidden', !sharing));
 }
 
-async function startScreenShare() {
+async function startScreenShare(platform) {
   if (state.screenStream) return;
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
     showToast("Partage d'ecran indisponible : ce navigateur ne le supporte pas (courant sur mobile), ou le site n'est pas en HTTPS.", 6000);
@@ -662,6 +691,12 @@ async function startScreenShare() {
   // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
   // sans repasser sur l'onglet Netflix/Prime d'origine.
   showScreenPreview(state.screenStream, { isRemote: false });
+
+  // On verrouille les onglets (chez nous et chez l'autre) sur la plateforme
+  // partagee, pour eviter qu'un changement d'onglet accidentel ne masque la
+  // video en cours (voir lockTabsToPlatform).
+  lockTabsToPlatform(platform);
+  socket.emit('screen-share-platform', { platform });
 
   // On partage vers tous les pairs actuellement connus dans le salon.
   state.peerConnections.forEach((_, peerId) => connectScreenToPeer(peerId));
@@ -723,6 +758,7 @@ function stopScreenShare() {
   state.screenPeerConnections.clear();
   setShareButtonsState(false);
   clearScreenViewer(); // efface aussi notre propre apercu local (on ne recoit pas notre propre "screen-share-stopped")
+  unlockTabs();
   socket.emit('screen-share-stopped');
 }
 
@@ -731,11 +767,12 @@ socket.on('screen-share-stopped', () => {
   pc.forEach((c) => c.close());
   pc.clear();
   clearScreenViewer();
+  unlockTabs();
   showToast("Le partage d'ecran s'est arrete.");
 });
 
 document.querySelectorAll('.share-screen-btn').forEach((btn) => {
-  btn.addEventListener('click', startScreenShare);
+  btn.addEventListener('click', () => startScreenShare(btn.dataset.platform));
 });
 document.querySelectorAll('.stop-share-btn').forEach((btn) => {
   btn.addEventListener('click', stopScreenShare);

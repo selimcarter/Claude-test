@@ -164,6 +164,13 @@ button.primary:hover { background: var(--accent-hover); }
   color: #fff;
 }
 
+/* Onglets desactives pendant un partage d'ecran actif sur une autre
+   plateforme (evite de masquer accidentellement la video en cours). */
+.tab-btn.locked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .presence {
   display: flex;
   gap: 6px;

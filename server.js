@@ -128,6 +128,11 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('screen-share-stopped');
   });
 
+  socket.on('screen-share-platform', ({ platform }) => {
+    if (!currentRoom || !platform) return;
+    socket.to(currentRoom).emit('screen-share-platform', { platform });
+  });
+
   socket.on('disconnect', () => {
     if (!currentRoom) return;
     const room = rooms.get(currentRoom);
