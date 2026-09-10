@@ -295,8 +295,13 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
       }
       .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; margin-right: 4px; }
       .status-dot.on { background: #3ddc84; }
+      /* Cache la bulle tant qu'on n'est pas reellement connecte a un salon :
+         sinon elle reste affichee en permanence sur Netflix/Prime, y compris
+         quand on ne l'utilise pas, et se retrouve capturee si on partage
+         cet onglet via le partage d'ecran du site. */
+      .not-connected { display: none !important; }
     </style>
-    <div class="widget no-remote" id="widget">
+    <div class="widget no-remote not-connected" id="widget">
       <div class="drag" id="drag">
         <video id="remote" class="remote" autoplay playsinline></video>
         <video id="local" class="local" autoplay playsinline muted></video>
@@ -306,7 +311,7 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
         <button id="micBtn"><span id="micLabel">Couper micro</span></button>
       </div>
     </div>
-    <div class="chat-bubble" id="chatBubble">💬</div>
+    <div class="chat-bubble not-connected" id="chatBubble">💬</div>
     <div class="chat-panel" id="chatPanel">
       <div class="messages" id="messages"></div>
       <form class="chat-form" id="chatForm">
@@ -419,6 +424,9 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
   return {
     setConnected(connected) {
       dot.classList.toggle('on', connected);
+      widget.classList.toggle('not-connected', !connected);
+      chatBubble.classList.toggle('not-connected', !connected);
+      if (!connected) chatPanel.classList.remove('open');
       if (connected) toast('Connecte au salon Watch Together.');
     },
     setLocalStream(stream) {

@@ -286,6 +286,33 @@ button.primary:hover { background: var(--accent-hover); }
   background: #000;
 }
 
+.fullscreen-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.fullscreen-btn:hover { background: rgba(0, 0, 0, 0.85); }
+
+/* En plein ecran, la bulle camera est deplacee a l'interieur du conteneur
+   video (seuls ses descendants restent visibles en plein ecran) : on
+   s'assure qu'elle garde une position coherente une fois a l'interieur. */
+.screen-share-viewer:fullscreen .camera-widget {
+  top: 16px;
+  right: 16px;
+}
+
 .screen-share-controls {
   display: flex;
   flex-direction: column;

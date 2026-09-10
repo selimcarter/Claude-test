@@ -14,6 +14,7 @@ const state = {
   micOn: true,
   screenStream: null,
   screenPeerConnections: new Map(), // id -> RTCPeerConnection (partage d'ecran)
+  currentPlatform: 'youtube',
 };
 
 const socket = io();
@@ -150,6 +151,10 @@ socket.on('peer-joined', ({ id, name }) => {
   showToast(`${name} a rejoint le salon.`);
   connectToPeer(id);
   if (state.screenStream) connectScreenToPeer(id);
+  // La personne qui rejoint n'a pas vu les clics d'onglet precedents : on lui
+  // signale sur quel onglet on se trouve actuellement, sinon elle reste sur
+  // l'onglet par defaut (YouTube) jusqu'au prochain changement d'onglet.
+  socket.emit('platform-select', { platform: state.currentPlatform });
 });
 
 socket.on('peer-left', ({ id }) => {
@@ -179,6 +184,7 @@ function renderPresence(users) {
 // ===================== Onglets plateforme =====================
 const tabButtons = document.querySelectorAll('.tab-btn');
 function setPlatform(platform, { broadcast } = { broadcast: true }) {
+  state.currentPlatform = platform;
   tabButtons.forEach((b) => b.classList.toggle('active', b.dataset.platform === platform));
   document.querySelectorAll('.platform-panel').forEach((p) => {
     p.classList.toggle('active', p.id === `panel-${platform}`);
@@ -660,6 +666,33 @@ document.querySelectorAll('.share-screen-btn').forEach((btn) => {
 });
 document.querySelectorAll('.stop-share-btn').forEach((btn) => {
   btn.addEventListener('click', stopScreenShare);
+});
+
+// ===================== Plein ecran (avec la camera qui reste visible) =====================
+// L'API plein ecran ne montre que l'element mis en plein ecran et ses
+// descendants : la bulle camera (position fixed, en dehors de la zone video)
+// disparaitrait donc en plein ecran si on ne la deplacait pas a l'interieur
+// du conteneur video le temps du plein ecran.
+document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const viewer = document.getElementById(`screen-viewer-${btn.dataset.platform}`);
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+      return;
+    }
+    viewer.appendChild(cameraWidget);
+    const request = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
+    if (request) {
+      request.call(viewer).catch((e) => debugLog('requestFullscreen refuse', e));
+    }
+  });
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    // Retour a la position normale de la bulle camera dans le document.
+    document.body.appendChild(cameraWidget);
+  }
 });
 
 // ===================== Bulle camera deplacable =====================
