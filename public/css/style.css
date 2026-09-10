@@ -321,6 +321,23 @@ button.primary:hover { background: var(--accent-hover); }
   margin: 0;
 }
 
+/* Position de repli pour la bulle camera en plein ecran (son style inline
+   issu d'un glisser-depose est efface avant d'entrer en plein ecran, voir
+   app.js) : garantit qu'elle reste toujours visible a l'ecran, notamment en
+   mode paysage sur mobile ou le viewport est beaucoup moins haut. */
+.screen-share-viewer.css-fullscreen .camera-widget {
+  top: 16px;
+  right: 16px;
+}
+
+/* Le bouton passe a gauche en plein ecran : a droite, il se retrouverait
+   recouvert (donc inaccessible) par la bulle camera positionnee juste
+   au-dessus, plus grande. */
+.screen-share-viewer.css-fullscreen .fullscreen-btn {
+  left: 16px;
+  right: auto;
+}
+
 .screen-share-controls {
   display: flex;
   flex-direction: column;
@@ -361,7 +378,9 @@ button.primary:hover { background: var(--accent-hover); }
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 300;
+  /* Doit rester au-dessus du plein ecran CSS (z-index 1000), sinon la
+     notification s'affiche derriere la video sans que rien ne le signale. */
+  z-index: 2000;
   background: rgba(15, 17, 21, 0.96);
   border: 2px solid var(--accent);
   color: #fff;
@@ -591,7 +610,7 @@ button.primary:hover { background: var(--accent-hover); }
   padding: 10px 18px;
   border-radius: 999px;
   font-size: 13px;
-  z-index: 200;
+  z-index: 2000; /* au-dessus du plein ecran CSS (1000) */
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 

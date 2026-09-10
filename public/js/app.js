@@ -11,7 +11,7 @@ const state = {
   localStream: null,
   peerConnections: new Map(), // id -> RTCPeerConnection
   camOn: true,
-  micOn: true,
+  micOn: false, // micro coupe par defaut a la connexion
   screenStream: null,
   screenPeerConnections: new Map(), // id -> RTCPeerConnection (partage d'ecran)
   currentPlatform: 'youtube',
@@ -449,6 +449,7 @@ async function initMedia() {
   }
   try {
     state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; }); // micro coupe par defaut
     localVideo.muted = true; // obligatoire pour l'autoplay du flux local
     attachStream(localVideo, state.localStream);
 
@@ -719,6 +720,13 @@ document.querySelectorAll('.stop-share-btn').forEach((btn) => {
 // sur un <div> (seulement sur <video>, sans possibilite d'afficher la camera
 // par-dessus), ce qui empechait le plein ecran de fonctionner pour celui qui
 // rejoint depuis un iPhone. Cette approche fonctionne partout de la meme facon.
+function refreshCameraVideos() {
+  // Deplacer les <video> dans le DOM peut, sur certains navigateurs (Safari
+  // notamment), interrompre brievement leur lecture : on la relance par
+  // securite plutot que de laisser une image figee/noire.
+  [localVideo, remoteVideo].forEach((v) => { if (v.srcObject) v.play().catch(() => {}); });
+}
+
 function exitCssFullscreen() {
   document.querySelectorAll('.screen-share-viewer.css-fullscreen').forEach((viewer) => {
     viewer.classList.remove('css-fullscreen');
@@ -726,6 +734,14 @@ function exitCssFullscreen() {
     if (btn) { btn.textContent = '⛶'; btn.title = 'Plein ecran'; }
   });
   document.body.appendChild(cameraWidget);
+  // On restaure la position choisie par glisser-depose (si aucune, la CSS
+  // par defaut du widget s'applique).
+  if (cameraWidget.dataset.savedTop !== undefined) {
+    cameraWidget.style.top = cameraWidget.dataset.savedTop;
+    cameraWidget.style.left = cameraWidget.dataset.savedLeft;
+    cameraWidget.style.right = cameraWidget.dataset.savedRight;
+  }
+  refreshCameraVideos();
   document.body.style.overflow = '';
 
   // L'API d'orientation n'accepte de deverrouiller que si l'API plein ecran
@@ -748,7 +764,21 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     }
     exitCssFullscreen(); // au cas ou un autre onglet etait deja en plein ecran
     viewer.classList.add('css-fullscreen');
+
+    // Une position fixee par un glisser-depose anterieur (ex: adaptee a un
+    // ecran en mode portrait) peut placer la bulle hors-champ une fois le
+    // viewport redimensionne en plein ecran/paysage : on l'efface le temps
+    // du plein ecran (la CSS .css-fullscreen .camera-widget prend le relais),
+    // et on la restaure a la sortie.
+    cameraWidget.dataset.savedTop = cameraWidget.style.top;
+    cameraWidget.dataset.savedLeft = cameraWidget.style.left;
+    cameraWidget.dataset.savedRight = cameraWidget.style.right;
+    cameraWidget.style.top = '';
+    cameraWidget.style.left = '';
+    cameraWidget.style.right = '';
+
     viewer.appendChild(cameraWidget);
+    refreshCameraVideos();
     document.body.style.overflow = 'hidden';
     btn.textContent = '✕';
     btn.title = 'Quitter le plein ecran';
