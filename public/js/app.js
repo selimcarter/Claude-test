@@ -86,9 +86,19 @@ const roomCodeInput = document.getElementById('room-code-input');
 const params = new URLSearchParams(location.search);
 if (params.get('room')) roomCodeInput.value = params.get('room');
 
+// On se souvient du prenom d'une visite a l'autre (evite de le retaper a
+// chaque fois qu'on rejoint un salon).
+const savedName = localStorage.getItem('watchTogetherName');
+if (savedName) nameInput.value = savedName;
+
+function rememberName(name) {
+  try { localStorage.setItem('watchTogetherName', name); } catch (e) { /* ignore */ }
+}
+
 document.getElementById('create-room-btn').addEventListener('click', () => {
   const name = nameInput.value.trim();
   if (!name) return showToast('Entrez votre prenom d\'abord.');
+  rememberName(name);
   enterRoom(genRoomCode(), name);
 });
 
@@ -97,8 +107,15 @@ document.getElementById('join-room-btn').addEventListener('click', () => {
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!name) return showToast('Entrez votre prenom d\'abord.');
   if (!code) return showToast('Entrez un code de salon.');
+  rememberName(name);
   enterRoom(code, name);
 });
+
+// Lien avec ?room=CODE + prenom deja memorise : on rejoint en un clic plutot
+// que de faire ressaisir le prenom et re-cliquer "Rejoindre" a chaque fois.
+if (params.get('room') && savedName) {
+  document.getElementById('join-room-btn').textContent = `Rejoindre en tant que ${savedName}`;
+}
 
 function enterRoom(roomId, name) {
   state.roomId = roomId;
@@ -245,6 +262,16 @@ function escapeHtml(str) {
 }
 
 document.getElementById('copy-link-btn').addEventListener('click', () => {
+  // Sur mobile : ouvre directement le menu de partage natif (WhatsApp,
+  // Messages...), plus rapide qu'un copier-coller manuel dans une autre appli.
+  if (navigator.share) {
+    navigator.share({
+      title: 'Watch Together',
+      text: 'Rejoins-moi sur Watch Together :',
+      url: location.href,
+    }).catch(() => {}); // l'utilisateur a simplement annule le partage
+    return;
+  }
   navigator.clipboard.writeText(location.href).then(() => showToast('Lien copie !'));
 });
 
