@@ -406,6 +406,32 @@ button.primary:hover { background: var(--accent-hover); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
+/* Notification de chat en coin, discrete mais impossible a manquer meme en
+   plein ecran (meme logique de z-index que .request-popup/.toast : au-dessus
+   du plein ecran CSS, qui est a 1000). */
+.chat-popup {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 2000;
+  max-width: min(320px, calc(100vw - 48px));
+  background: rgba(15, 17, 21, 0.96);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  animation: request-popup-in 0.2s ease-out;
+  word-break: break-word;
+}
+
+.chat-popup-author {
+  font-weight: 700;
+  color: var(--accent);
+}
+
 .share-screen-btn {
   background: var(--accent);
   border-color: var(--accent);
@@ -480,6 +506,51 @@ button.primary:hover { background: var(--accent-hover); }
   min-height: 0;
 }
 
+.chat-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.chat-panel-header button {
+  padding: 4px 8px;
+  font-size: 13px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+}
+
+.chat-panel-header button:hover { color: var(--text); background: var(--panel-2); }
+
+/* Repli le chat pour agrandir la zone video (l'espace se recupere surtout
+   utile sur mobile) ; les messages continuent d'arriver via la popup
+   .chat-popup, donc rien n'est manque en le refermant. */
+.main-grid.chat-collapsed { grid-template-columns: 1fr; }
+.main-grid.chat-collapsed .chat-panel { display: none; }
+
+.chat-toggle-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 150;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.chat-toggle-btn:hover { background: var(--accent-hover); }
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -532,7 +603,7 @@ button.primary:hover { background: var(--accent-hover); }
 /* ===== Camera widget (draggable) ===== */
 .camera-widget {
   position: fixed;
-  top: 80px;
+  top: 130px; /* sous la barre du haut + l'en-tete du chat, pour ne pas les recouvrir */
   right: 24px;
   width: 220px;
   background: var(--panel);
@@ -590,14 +661,18 @@ button.primary:hover { background: var(--accent-hover); }
 .camera-buttons {
   display: flex;
   gap: 4px;
-  padding: 6px;
+  padding: 4px;
   background: var(--panel);
 }
 
+/* Icones plutot que du texte ("Couper la camera"...) : la bulle reste
+   compacte (moins haute, plus de place pour la video) sans rien perdre en
+   clarte - l'etat actif/coupe reste visible via la couleur (.off). */
 .camera-buttons button {
   flex: 1;
   padding: 6px 4px;
-  font-size: 12px;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .camera-buttons button.off {

@@ -125,7 +125,11 @@
     </div>
 
     <!-- Chat -->
-    <aside class="chat-panel">
+    <aside class="chat-panel" id="chat-panel">
+      <div class="chat-panel-header">
+        <span>Chat</span>
+        <button type="button" id="chat-close-btn" title="Replier le chat">✕</button>
+      </div>
       <div class="chat-messages" id="chat-messages"></div>
       <form id="chat-form" class="chat-form">
         <input id="chat-input" type="text" placeholder="Ecrire un message..." maxlength="2000" autocomplete="off">
@@ -134,6 +138,9 @@
     </aside>
   </main>
 
+  <!-- Bouton pour rouvrir le chat une fois replie -->
+  <button type="button" id="chat-toggle-btn" class="chat-toggle-btn hidden" title="Ouvrir le chat">💬</button>
+
   <!-- Bulle camera deplacable -->
   <div id="camera-widget" class="camera-widget">
     <div class="camera-drag-handle" id="camera-drag-handle">
@@ -141,8 +148,8 @@
       <video id="remote-video" autoplay playsinline></video>
     </div>
     <div class="camera-buttons">
-      <button id="toggle-cam-btn" title="Activer/couper la camera">Couper la camera</button>
-      <button id="toggle-mic-btn" class="off" title="Activer/couper le micro">Activer le micro</button>
+      <button id="toggle-cam-btn" title="Activer/couper la camera">📷</button>
+      <button id="toggle-mic-btn" class="off" title="Activer/couper le micro">🎤</button>
     </div>
   </div>
 
@@ -150,6 +157,10 @@
 
 <div id="toast" class="toast hidden"></div>
 <div id="request-popup" class="request-popup hidden"><span id="request-popup-text"></span></div>
+<div id="chat-popup" class="chat-popup hidden">
+  <span id="chat-popup-author" class="chat-popup-author"></span>
+  <span id="chat-popup-text"></span>
+</div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="/socket.io/socket.io.js"></script>

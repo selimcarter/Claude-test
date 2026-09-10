@@ -275,6 +275,24 @@ document.getElementById('chat-form').addEventListener('submit', (e) => {
   input.value = '';
 });
 
+// Repli le chat pour liberer de la place pour la video (surtout utile sur
+// mobile) : les messages continuent d'arriver via la popup en coin, rien
+// n'est manque en le fermant.
+const mainGrid = document.querySelector('.main-grid');
+const chatToggleBtn = document.getElementById('chat-toggle-btn');
+
+function setChatCollapsed(collapsed) {
+  mainGrid.classList.toggle('chat-collapsed', collapsed);
+  chatToggleBtn.classList.toggle('hidden', !collapsed);
+}
+
+document.getElementById('chat-close-btn').addEventListener('click', () => setChatCollapsed(true));
+chatToggleBtn.addEventListener('click', () => setChatCollapsed(false));
+
+// Replie par defaut sur petit ecran, pour maximiser la place de la video des
+// l'arrivee dans le salon.
+if (window.innerWidth <= 860) setChatCollapsed(true);
+
 socket.on('chat-message', ({ from, fromId, text, ts }) => {
   const div = document.createElement('div');
   div.className = 'chat-msg' + (fromId === state.myId ? ' self' : '');
@@ -282,7 +300,20 @@ socket.on('chat-message', ({ from, fromId, text, ts }) => {
   div.innerHTML = `<span class="meta">${from} - ${time}</span>${escapeHtml(text)}`;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // Notification en coin pour les messages recus : visible meme si le chat
+  // est replie, ou si on regarde la video en plein ecran.
+  if (fromId !== state.myId) showChatPopup(from, text);
 });
+
+function showChatPopup(from, text) {
+  const popup = document.getElementById('chat-popup');
+  document.getElementById('chat-popup-author').textContent = from + ' : ';
+  document.getElementById('chat-popup-text').textContent = text;
+  popup.classList.remove('hidden');
+  clearTimeout(showChatPopup._t);
+  showChatPopup._t = setTimeout(() => popup.classList.add('hidden'), 5000);
+}
 
 function escapeHtml(str) {
   const d = document.createElement('div');
@@ -640,18 +671,20 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
 const toggleCamBtn = document.getElementById('toggle-cam-btn');
 const toggleMicBtn = document.getElementById('toggle-mic-btn');
 
+// Icones fixes (voir index.html) : seule la couleur (.off = rouge) indique
+// l'etat, le titre (info-bulle) precise l'action pour l'accessibilite.
 toggleCamBtn.addEventListener('click', () => {
   state.camOn = !state.camOn;
   if (state.localStream) state.localStream.getVideoTracks().forEach((t) => { t.enabled = state.camOn; });
   toggleCamBtn.classList.toggle('off', !state.camOn);
-  toggleCamBtn.textContent = state.camOn ? 'Couper la camera' : 'Activer la camera';
+  toggleCamBtn.title = state.camOn ? 'Couper la camera' : 'Activer la camera';
 });
 
 toggleMicBtn.addEventListener('click', () => {
   state.micOn = !state.micOn;
   if (state.localStream) state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; });
   toggleMicBtn.classList.toggle('off', !state.micOn);
-  toggleMicBtn.textContent = state.micOn ? 'Couper le micro' : 'Activer le micro';
+  toggleMicBtn.title = state.micOn ? 'Couper le micro' : 'Activer le micro';
 });
 
 // ===================== Partage d'ecran (Netflix / Prime) =====================
