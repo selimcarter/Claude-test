@@ -97,11 +97,44 @@ function enterRoom(roomId, name) {
 }
 
 // ===================== Reception des evenements de salon =====================
+
+// Le plan gratuit de Render met le serveur en veille apres inactivite : une
+// page laissee ouverte longtemps peut se retrouver deconnectee du serveur
+// sans que rien ne le signale a l'ecran (elle a l'air connectee mais ne l'est
+// plus). Socket.IO reconnecte automatiquement le transport, mais il faut
+// explicitement re-rejoindre le salon ensuite, et repartir a zero pour les
+// connexions WebRTC : apres une reconnexion, tout le monde a un nouveau
+// socket.id, donc les anciennes connexions pair-a-pair pointent vers des ID
+// qui n'existent plus.
+let hasJoinedOnce = false;
+
+socket.on('connect', () => {
+  if (!hasJoinedOnce || !state.roomId) return;
+  debugLog('Reconnecte au serveur : on rejoint a nouveau le salon.');
+  showToast('Connexion retablie, on se reconnecte au salon...', 3000);
+
+  state.peerConnections.forEach((pc) => pc.close());
+  state.peerConnections.clear();
+  state.screenPeerConnections.forEach((pc) => pc.close());
+  state.screenPeerConnections.clear();
+  clearVideoElement(remoteVideo);
+  cameraWidget.classList.add('no-remote');
+  clearRemoteScreen();
+
+  socket.emit('join-room', { roomId: state.roomId, name: state.myName });
+});
+
+socket.on('disconnect', () => {
+  if (!hasJoinedOnce) return;
+  showToast('Connexion au serveur perdue, reconnexion en cours...', 5000);
+});
+
 socket.on('room-full', () => {
   showToast('Ce salon est deja complet (2 personnes max).');
 });
 
 socket.on('joined', ({ self, peers }) => {
+  hasJoinedOnce = true;
   state.myId = self.id;
   landing.classList.add('hidden');
   appScreen.classList.remove('hidden');
@@ -356,6 +389,13 @@ function mediaErrorMessage(err, what) {
 }
 
 async function initMedia() {
+  // Deja en possession d'une camera active (ex: reconnexion apres un reveil
+  // du serveur) : pas besoin de redemander l'acces, on reutilise le flux.
+  if (state.localStream && state.localStream.getTracks().some((t) => t.readyState === 'live')) {
+    attachStream(localVideo, state.localStream);
+    state.peerConnections.forEach((pc) => addLocalTracksToPeer(pc));
+    return;
+  }
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showToast("Camera/micro indisponibles : ce site doit etre ouvert en HTTPS (ou localhost) pour y acceder.", 6000);
     return;
