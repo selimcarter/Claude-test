@@ -567,7 +567,14 @@ async function startScreenShare() {
     return;
   }
   try {
-    state.screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    // Resolution/frequence limitees : le relais TURN public gratuit a une
+    // bande passante restreinte (partagee entre des milliers d'utilisateurs) ;
+    // un partage plein ecran/HD non contraint sature vite ce relais et
+    // provoque des saccades. 720p/15fps reste largement lisible.
+    state.screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 20 } },
+      audio: true,
+    });
   } catch (e) {
     showToast(e && e.name === 'NotAllowedError'
       ? "Partage d'ecran annule."
@@ -585,8 +592,21 @@ function connectScreenToPeer(peerId) {
   if (!state.screenStream || state.screenPeerConnections.has(peerId)) return;
   const pc = createPeerConnection(peerId, { kind: 'screen' });
   state.screenPeerConnections.set(peerId, pc);
-  state.screenStream.getTracks().forEach((track) => pc.addTrack(track, state.screenStream));
+  state.screenStream.getTracks().forEach((track) => {
+    const sender = pc.addTrack(track, state.screenStream);
+    if (track.kind === 'video') limitVideoBitrate(sender);
+  });
   return pc;
+}
+
+// Plafonne le debit encode (independamment de la resolution demandee) : sur
+// un relais TURN a bande passante limitee, un debit trop eleve fait plus de
+// mal (paquets perdus, saccades) qu'une image un peu moins nette.
+function limitVideoBitrate(sender, maxBitrate = 700000) {
+  const params = sender.getParameters();
+  if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+  params.encodings[0].maxBitrate = maxBitrate;
+  sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
 function showRemoteScreen(stream) {
