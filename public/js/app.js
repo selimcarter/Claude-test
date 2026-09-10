@@ -822,6 +822,21 @@ function exitCssFullscreen() {
 document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const viewer = document.getElementById(`screen-viewer-${btn.dataset.platform}`);
+    const video = document.getElementById(`screen-video-${btn.dataset.platform}`);
+
+    // iOS Safari : ni notre plein ecran CSS, ni l'API Fullscreen generique,
+    // ne masquent la barre d'adresse/onglets Safari (elle reste affichee et
+    // reduit l'espace visible du lecteur). Seul le plein ecran natif propre
+    // a la balise <video> (webkitEnterFullscreen, specifique a Safari) la
+    // masque vraiment. On l'utilise en priorite quand disponible - le seul
+    // compromis est que la bulle camera ne peut pas se superposer sur ce
+    // lecteur natif specifique (limite d'iOS, pas contournable en JS) ;
+    // elle reste normalement disponible une fois qu'on quitte ce mode.
+    if (typeof video.webkitEnterFullscreen === 'function') {
+      video.webkitEnterFullscreen();
+      return;
+    }
+
     if (viewer.classList.contains('css-fullscreen')) {
       exitCssFullscreen();
       return;
