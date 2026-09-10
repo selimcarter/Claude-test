@@ -490,16 +490,24 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
   await applyIncomingSignal(pc, from, signal);
 });
 
-document.getElementById('toggle-cam-btn').addEventListener('click', (e) => {
+// Le libelle du bouton reflete l'action qu'il declenchera (et non un simple
+// nom fixe) pour eviter de confondre "couper" et "activer" : un ecran noir
+// apres un clic sur ce bouton n'est pas un bug de camera, juste la coupure.
+const toggleCamBtn = document.getElementById('toggle-cam-btn');
+const toggleMicBtn = document.getElementById('toggle-mic-btn');
+
+toggleCamBtn.addEventListener('click', () => {
   state.camOn = !state.camOn;
   if (state.localStream) state.localStream.getVideoTracks().forEach((t) => { t.enabled = state.camOn; });
-  e.target.classList.toggle('off', !state.camOn);
+  toggleCamBtn.classList.toggle('off', !state.camOn);
+  toggleCamBtn.textContent = state.camOn ? 'Couper la camera' : 'Activer la camera';
 });
 
-document.getElementById('toggle-mic-btn').addEventListener('click', (e) => {
+toggleMicBtn.addEventListener('click', () => {
   state.micOn = !state.micOn;
   if (state.localStream) state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; });
-  e.target.classList.toggle('off', !state.micOn);
+  toggleMicBtn.classList.toggle('off', !state.micOn);
+  toggleMicBtn.textContent = state.micOn ? 'Couper le micro' : 'Activer le micro';
 });
 
 // ===================== Partage d'ecran (Netflix / Prime) =====================

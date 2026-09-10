@@ -302,8 +302,8 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
         <video id="local" class="local" autoplay playsinline muted></video>
       </div>
       <div class="btns">
-        <button id="camBtn"><span class="status-dot" id="dot"></span>Cam</button>
-        <button id="micBtn">Micro</button>
+        <button id="camBtn"><span class="status-dot" id="dot"></span><span id="camLabel">Couper camera</span></button>
+        <button id="micBtn"><span id="micLabel">Couper micro</span></button>
       </div>
     </div>
     <div class="chat-bubble" id="chatBubble">💬</div>
@@ -353,13 +353,18 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
   }
 
   // --- Boutons camera / micro ---
+  // Le libelle reflete l'action a venir (et non un nom fixe) pour eviter de
+  // confondre "couper" et "activer" : un ecran noir apres un clic ici n'est
+  // pas un bug, juste la coupure volontaire de la camera.
   root.getElementById('camBtn').addEventListener('click', (e) => {
     const on = onToggleCam();
     e.currentTarget.classList.toggle('off', !on);
+    root.getElementById('camLabel').textContent = on ? 'Couper camera' : 'Activer camera';
   });
   root.getElementById('micBtn').addEventListener('click', (e) => {
     const on = onToggleMic();
     e.currentTarget.classList.toggle('off', !on);
+    root.getElementById('micLabel').textContent = on ? 'Couper micro' : 'Activer micro';
   });
 
   // --- Chat ---
