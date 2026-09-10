@@ -119,7 +119,7 @@ socket.on('connect', () => {
   state.screenPeerConnections.clear();
   clearVideoElement(remoteVideo);
   cameraWidget.classList.add('no-remote');
-  clearRemoteScreen();
+  clearScreenViewer();
 
   socket.emit('join-room', { roomId: state.roomId, name: state.myName });
 });
@@ -160,7 +160,7 @@ socket.on('peer-left', ({ id }) => {
 
   const screenPc = state.screenPeerConnections.get(id);
   if (screenPc) { screenPc.close(); state.screenPeerConnections.delete(id); }
-  clearRemoteScreen();
+  clearScreenViewer();
 });
 
 socket.on('room-users', (users) => renderPresence(users));
@@ -521,7 +521,7 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
   if (isScreen) {
     pc = state.screenPeerConnections.get(from);
     if (!pc) {
-      pc = createPeerConnection(from, { kind: 'screen', onTrack: (event) => showRemoteScreen(event.streams[0]) });
+      pc = createPeerConnection(from, { kind: 'screen', onTrack: (event) => showScreenPreview(event.streams[0], { isRemote: true }) });
       state.screenPeerConnections.set(from, pc);
     }
   } else {
@@ -584,6 +584,10 @@ async function startScreenShare() {
   setShareButtonsState(true);
   state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
 
+  // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
+  // sans repasser sur l'onglet Netflix/Prime d'origine.
+  showScreenPreview(state.screenStream, { isRemote: false });
+
   // On partage vers tous les pairs actuellement connus dans le salon.
   state.peerConnections.forEach((_, peerId) => connectScreenToPeer(peerId));
 }
@@ -609,15 +613,22 @@ function limitVideoBitrate(sender, maxBitrate = 700000) {
   sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
-function showRemoteScreen(stream) {
+// stream vient soit du pair (isRemote: true), soit de notre propre partage
+// (isRemote: false, apercu local). Meme <video> reutilise dans les deux cas
+// (on ne peut pas etre les deux a la fois dans un salon a 2 personnes).
+function showScreenPreview(stream, { isRemote }) {
   ['netflix', 'prime'].forEach((platform) => {
-    attachStream(document.getElementById(`screen-video-${platform}`), stream);
+    const videoEl = document.getElementById(`screen-video-${platform}`);
+    attachStream(videoEl, stream);
+    // Notre propre apercu doit rester muet : le son original joue deja dans
+    // l'onglet Netflix/Prime partage, sinon on l'entendrait en double (echo).
+    videoEl.muted = !isRemote;
     document.getElementById(`screen-viewer-${platform}`).classList.remove('hidden');
   });
-  showToast("L'autre personne partage son ecran.");
+  if (isRemote) showToast("L'autre personne partage son ecran.");
 }
 
-function clearRemoteScreen() {
+function clearScreenViewer() {
   ['netflix', 'prime'].forEach((platform) => {
     clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
@@ -632,6 +643,7 @@ function stopScreenShare() {
   state.screenPeerConnections.forEach((pc) => pc.close());
   state.screenPeerConnections.clear();
   setShareButtonsState(false);
+  clearScreenViewer(); // efface aussi notre propre apercu local (on ne recoit pas notre propre "screen-share-stopped")
   socket.emit('screen-share-stopped');
 }
 
@@ -639,7 +651,7 @@ socket.on('screen-share-stopped', () => {
   const pc = state.screenPeerConnections;
   pc.forEach((c) => c.close());
   pc.clear();
-  clearRemoteScreen();
+  clearScreenViewer();
   showToast("Le partage d'ecran s'est arrete.");
 });
 
