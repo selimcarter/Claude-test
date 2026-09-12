@@ -374,6 +374,7 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 .screen-share-viewer.css-fullscreen .camera-widget {
   top: 16px;
   right: 16px;
+  bottom: auto;
 }
 
 /* Le bouton passe a gauche en plein ecran : a droite, il se retrouverait
@@ -488,60 +489,6 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   border-color: var(--danger);
   color: #fff;
   font-weight: 600;
-}
-
-.manual-sync-card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 30%), var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
-  max-width: 640px;
-  box-shadow: var(--shadow-soft);
-}
-
-.manual-sync-card h2 { margin-top: 0; }
-
-.warning {
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1.6;
-  background: rgba(255, 91, 122, 0.08);
-  border: 1px solid rgba(255, 91, 122, 0.25);
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-}
-
-.open-btn {
-  display: inline-block;
-  margin: 16px 0;
-  background: var(--accent-gradient);
-  color: #fff;
-  text-decoration: none;
-  padding: 10px 16px;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 14px;
-  box-shadow: 0 10px 24px -10px rgba(124, 108, 240, 0.6);
-}
-
-.open-btn:hover { filter: brightness(1.08); }
-
-.sync-tools {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.countdown-display {
-  margin-top: 14px;
-  font-size: 46px;
-  font-weight: 700;
-  min-height: 54px;
-  background: var(--accent-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 /* ===== Chat ===== */
@@ -750,5 +697,17 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 @media (max-width: 860px) {
   .main-grid { grid-template-columns: 1fr; }
   .chat-panel { border-left: none; border-top: 1px solid var(--border); height: 300px; }
-  .camera-widget { width: 160px; }
+
+  /* La barre du haut peut passer sur 2-3 lignes en portrait (salon + tabs +
+     presence qui passent a la ligne faute de place) : sa hauteur totale
+     devient alors imprevisible et peut depasser le top:130px prevu pour le
+     desktop, ce qui faisait disparaitre la bulle camera derriere elle. On
+     l'ancre donc depuis le bas du viewport (independant de la barre du haut),
+     juste au-dessus du bouton de chat replie pour ne pas se chevaucher. */
+  .camera-widget {
+    top: auto;
+    bottom: 96px;
+    right: 12px;
+    width: 130px;
+  }
 }

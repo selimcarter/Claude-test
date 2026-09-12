@@ -440,21 +440,8 @@ socket.on('yt-state', ({ state: playState, time, ts }) => {
   setTimeout(() => { state.applyingRemoteYtChange = false; }, 600);
 });
 
-// ===================== Synchro manuelle Netflix / Prime =====================
-document.querySelectorAll('.countdown-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    socket.emit('manual-countdown', { seconds: Number(btn.dataset.seconds) });
-  });
-});
-
-document.querySelectorAll('.pause-ping-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    socket.emit('manual-pause-ping');
-    showToast('Signal de pause envoye.');
-  });
-});
-
-// Memes signaux, mais depuis la vue "je regarde le partage d'ecran de l'autre"
+// ===================== Demandes pause/avance (vue partage d'ecran) =====================
+// Signaux envoyes depuis la vue "je regarde le partage d'ecran de l'autre"
 // (boutons visibles uniquement cote spectateur, voir showScreenPreview plus bas).
 document.querySelectorAll('.request-pause-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -467,24 +454,6 @@ document.querySelectorAll('.request-forward-btn').forEach((btn) => {
     socket.emit('manual-forward-ping');
     showToast("Demande d'avancer envoyee.");
   });
-});
-
-socket.on('manual-countdown', ({ startAt }) => {
-  const displays = [
-    document.getElementById('countdown-display-netflix'),
-    document.getElementById('countdown-display-prime'),
-  ];
-  const tick = () => {
-    const remaining = Math.ceil((startAt - Date.now()) / 1000);
-    const text = remaining > 0 ? String(remaining) : 'GO !';
-    displays.forEach((d) => { d.textContent = text; });
-    if (remaining > 0) {
-      requestAnimationFrame(tick);
-    } else {
-      setTimeout(() => displays.forEach((d) => { d.textContent = ''; }), 1200);
-    }
-  };
-  tick();
 });
 
 socket.on('manual-pause-ping', ({ from }) => {

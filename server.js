@@ -149,17 +149,7 @@ io.on('connection', (socket) => {
     socket.to(currentRoom).emit('yt-seek', { time, ts: Date.now() });
   });
 
-  // --- Manual synced start / pause ping for Netflix / Prime Video ---
-  socket.on('manual-countdown', ({ seconds }) => {
-    if (!currentRoom) return;
-    // Valeur bornee : une entree non numerique produirait un startAt = NaN
-    // propage tel quel aux deux clients (compte a rebours qui affiche "GO !"
-    // immediatement sans jamais decompter).
-    const safeSeconds = Number.isFinite(seconds) ? Math.min(Math.max(seconds, 1), 60) : 5;
-    const startAt = Date.now() + safeSeconds * 1000;
-    io.to(currentRoom).emit('manual-countdown', { startAt });
-  });
-
+  // --- Demandes pause/avance (depuis la vue partage d'ecran) ---
   socket.on('manual-pause-ping', () => {
     if (!currentRoom) return;
     socket.to(currentRoom).emit('manual-pause-ping', { from: socket.data.name || 'Invite' });
