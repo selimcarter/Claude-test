@@ -13,13 +13,15 @@
     localStream: null,
     peerConnections: new Map(),
     camOn: true,
-    micOn: true,
+    micOn: false, // micro coupe par defaut, coherent avec le site (voir app.js)
   };
 
-  // STUN public + TURN public de secours (OpenRelay/Metered), indispensable
-  // des que les 2 personnes ne sont pas sur le meme reseau (NAT restrictif,
-  // 4G...) : sans TURN, la connexion camera echoue silencieusement.
-  const ICE_SERVERS = [
+  // STUN public + TURN public de secours (OpenRelay/Metered), utilise tant
+  // que le serveur n'a pas fourni sa config ICE dediee (voir fetchIceServers
+  // plus bas) : indispensable des que les 2 personnes ne sont pas sur le
+  // meme reseau (NAT restrictif, 4G...), sinon la connexion camera echoue
+  // silencieusement. Peut etre remplace dynamiquement (voir plus bas).
+  let ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
@@ -102,6 +104,11 @@
     if (msg.type === 'status') {
       state.myId = msg.myId;
       state.peers = msg.peers || [];
+      // Config TURN dediee recuperee par background.js (voir /api/ice-servers
+      // sur le serveur) : sans ca, l'extension utilisait TOUJOURS le TURN
+      // public OpenRelay, meme quand un compte Metered dedie est configure
+      // sur Render pour le site.
+      if (Array.isArray(msg.iceServers) && msg.iceServers.length > 0) ICE_SERVERS = msg.iceServers;
       ui.setConnected(msg.connected);
       if (msg.connected) {
         initMedia().then(() => state.peers.forEach((p) => connectToPeer(p.id)));
@@ -134,6 +141,7 @@
     }
     try {
       state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; }); // micro coupe par defaut
       ui.setLocalStream(state.localStream);
       // Si une connexion pair-a-pair existait deja sans piste locale (permission
       // camera pas encore accordee au moment ou l'autre personne s'est connectee),
@@ -308,7 +316,7 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
       </div>
       <div class="btns">
         <button id="camBtn"><span class="status-dot" id="dot"></span><span id="camLabel">Couper camera</span></button>
-        <button id="micBtn"><span id="micLabel">Couper micro</span></button>
+        <button id="micBtn" class="off"><span id="micLabel">Activer micro</span></button>
       </div>
     </div>
     <div class="chat-bubble not-connected" id="chatBubble">💬</div>
@@ -450,9 +458,14 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
       const div = document.createElement('div');
       div.className = 'msg' + (isSelf ? ' self' : '');
       const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // "from" est un nom choisi par l'autre personne : jamais via innerHTML,
+      // sinon un prenom contenant du HTML/JS s'executerait ici (XSS stocke).
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = `${from} - ${time}`;
       const safeText = document.createElement('span');
       safeText.textContent = text;
-      div.innerHTML = `<span class="meta">${from} - ${time}</span>`;
+      div.appendChild(meta);
       div.appendChild(safeText);
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;

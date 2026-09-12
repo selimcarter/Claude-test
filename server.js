@@ -80,6 +80,22 @@ io.on('connection', (socket) => {
 
   socket.on('join-room', ({ roomId, name }) => {
     if (!roomId || typeof roomId !== 'string') return;
+    roomId = roomId.trim().toUpperCase();
+
+    // Si ce socket etait deja dans un autre salon (changement de salon sans
+    // deconnexion), on le retire proprement de l'ancien pour ne pas laisser
+    // une entree fantome qui bloquerait une place inutilement.
+    if (currentRoom && currentRoom !== roomId) {
+      const previousRoom = rooms.get(currentRoom);
+      if (previousRoom) {
+        previousRoom.users.delete(socket.id);
+        socket.leave(currentRoom);
+        io.to(currentRoom).emit('peer-left', { id: socket.id });
+        io.to(currentRoom).emit('room-users', roomUserList(currentRoom));
+        if (previousRoom.users.size === 0) rooms.delete(currentRoom);
+      }
+    }
+
     currentRoom = roomId;
     socket.join(roomId);
     const room = getRoom(roomId);
@@ -90,8 +106,9 @@ io.on('connection', (socket) => {
       return;
     }
 
-    room.users.set(socket.id, name || 'Invite');
-    socket.data.name = name || 'Invite';
+    const safeName = String(name || 'Invite').slice(0, 30);
+    room.users.set(socket.id, safeName);
+    socket.data.name = safeName;
 
     const others = roomUserList(roomId).filter((u) => u.id !== socket.id);
     socket.emit('joined', { self: { id: socket.id, name: socket.data.name }, peers: others });
@@ -135,7 +152,11 @@ io.on('connection', (socket) => {
   // --- Manual synced start / pause ping for Netflix / Prime Video ---
   socket.on('manual-countdown', ({ seconds }) => {
     if (!currentRoom) return;
-    const startAt = Date.now() + seconds * 1000;
+    // Valeur bornee : une entree non numerique produirait un startAt = NaN
+    // propage tel quel aux deux clients (compte a rebours qui affiche "GO !"
+    // immediatement sans jamais decompter).
+    const safeSeconds = Number.isFinite(seconds) ? Math.min(Math.max(seconds, 1), 60) : 5;
+    const startAt = Date.now() + safeSeconds * 1000;
     io.to(currentRoom).emit('manual-countdown', { startAt });
   });
 
@@ -151,7 +172,13 @@ io.on('connection', (socket) => {
 
   // --- WebRTC signaling relay (camera et partage d'ecran) ---
   socket.on('webrtc-signal', ({ to, signal }) => {
-    if (!to) return;
+    // Le destinataire doit etre un membre actuel du MEME salon que
+    // l'expediteur : sans cette verification, n'importe quel client connecte
+    // pourrait injecter des offres/candidats SDP vers n'importe quel autre
+    // socket du serveur, y compris dans un salon different du sien.
+    if (!to || !currentRoom) return;
+    const room = rooms.get(currentRoom);
+    if (!room || !room.users.has(to)) return;
     io.to(to).emit('webrtc-signal', { from: socket.id, signal });
   });
 
@@ -226,8 +253,21 @@ extWss.on('connection', (ws) => {
     }
 
     if (msg.type === 'join') {
-      const roomId = String(msg.roomId || '');
+      const roomId = String(msg.roomId || '').trim().toUpperCase();
       if (!roomId) return;
+
+      // Meme nettoyage que cote Socket.IO : eviter qu'un changement de salon
+      // sans deconnexion ne laisse une entree fantome dans l'ancien.
+      if (currentRoom && currentRoom !== roomId) {
+        const previousRoom = extRooms.get(currentRoom);
+        if (previousRoom) {
+          previousRoom.delete(clientId);
+          broadcastExtRoom(currentRoom, { type: 'peer-left', id: clientId });
+          broadcastExtRoom(currentRoom, { type: 'room-users', users: extRoomUserList(currentRoom) });
+          if (previousRoom.size === 0) extRooms.delete(currentRoom);
+        }
+      }
+
       currentRoom = roomId;
       const room = getExtRoom(roomId);
 

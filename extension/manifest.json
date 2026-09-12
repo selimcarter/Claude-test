@@ -7,7 +7,7 @@
   "host_permissions": [
     "*://*.netflix.com/*",
     "*://*.primevideo.com/*",
-    "*://*.amazon.com/*"
+    "*://*.amazon.com/gp/video/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -17,7 +17,7 @@
       "matches": [
         "*://*.netflix.com/*",
         "*://*.primevideo.com/*",
-        "*://*.amazon.com/*"
+        "*://*.amazon.com/gp/video/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"

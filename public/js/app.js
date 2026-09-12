@@ -173,7 +173,13 @@ socket.on('connect', () => {
     state.screenPeerConnections.clear();
     clearVideoElement(remoteVideo);
     cameraWidget.classList.add('no-remote');
-    clearScreenViewer();
+
+    // Si on est soi-meme en train de partager son ecran, ce flux local reste
+    // actif malgre la coupure reseau (il n'a pas ete arrete) : on ne l'efface
+    // donc pas ici, on le rebranchera vers les pairs juste apres avoir rejoint
+    // le salon (voir socket.on('joined', ...)) plutot que de laisser l'autre
+    // personne avec un ecran fige sans aucun signal d'arret explicite.
+    if (!state.screenStream) clearScreenViewer();
 
     socket.emit('join-room', { roomId: state.roomId, name: state.myName });
   }, 1500);
@@ -200,6 +206,16 @@ socket.on('joined', ({ self, peers }) => {
   initMedia().then(() => {
     peers.forEach((p) => connectToPeer(p.id));
   });
+
+  // Reconnexion pendant un partage d'ecran actif : le flux local est toujours
+  // vivant, mais les connexions WebRTC dediees au partage ont ete fermees (et
+  // les identifiants de pairs ont change) - il faut donc les rebrancher
+  // explicitement, sinon l'autre personne ne recoit plus jamais l'ecran
+  // partage sans qu'aucune erreur ne soit visible.
+  if (state.screenStream) {
+    peers.forEach((p) => connectScreenToPeer(p.id));
+    socket.emit('screen-share-platform', { platform: state.activeSharePlatform });
+  }
 });
 
 socket.on('peer-joined', ({ id, name }) => {
@@ -234,7 +250,13 @@ function renderPresence(users) {
   users.forEach((u) => {
     const chip = document.createElement('span');
     chip.className = 'user-chip';
-    chip.innerHTML = `<span class="dot"></span>${u.id === state.myId ? u.name + ' (vous)' : u.name}`;
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    chip.appendChild(dot);
+    // Nom d'utilisateur ajoute en texte brut (jamais via innerHTML) : c'est
+    // une valeur choisie librement par l'autre personne, un nom du style
+    // "<img src=x onerror=...>" ne doit jamais pouvoir s'executer ici.
+    chip.appendChild(document.createTextNode(u.id === state.myId ? `${u.name} (vous)` : u.name));
     list.appendChild(chip);
   });
 }
@@ -312,7 +334,10 @@ socket.on('chat-message', ({ from, fromId, text, ts }) => {
   const div = document.createElement('div');
   div.className = 'chat-msg' + (fromId === state.myId ? ' self' : '');
   const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  div.innerHTML = `<span class="meta">${from} - ${time}</span>${escapeHtml(text)}`;
+  // "from" est un nom choisi par l'autre personne : il doit etre echappe au
+  // meme titre que le texte du message (voir escapeHtml plus bas), sinon un
+  // prenom contenant du HTML/JS s'executerait ici (XSS stocke).
+  div.innerHTML = `<span class="meta">${escapeHtml(from)} - ${time}</span>${escapeHtml(text)}`;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
