@@ -677,7 +677,6 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
           if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
             event.receiver.playoutDelayHint = 0.25;
           }
-          if (event.track.kind === 'video') startScreenStatsOverlay(pc, true);
           showScreenPreview(event.streams[0], { isRemote: true });
         },
       });
@@ -728,14 +727,12 @@ async function startScreenShare(platform) {
     return;
   }
   try {
-    // Full HD / 30fps : la meilleure qualite source raisonnable pour du film
-    // (au-dela de 30fps n'apporte rien, la plupart des films/series sont a
-    // 24-30fps). Le debit reste plafonne plus bas (voir tuneScreenVideoSender),
-    // donc demander cette qualite source ne cree pas de risque de saccade :
-    // au pire elle est automatiquement reduite en temps reel par l'encodeur
-    // (degradationPreference='balanced', voir tuneScreenVideoSender).
+    // Resolution/frequence limitees : le relais TURN public gratuit a une
+    // bande passante restreinte (partagee entre des milliers d'utilisateurs) ;
+    // un partage plein ecran/HD non contraint sature vite ce relais et
+    // provoque des saccades. 720p/15fps reste largement lisible.
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 20 } },
       audio: true,
     });
   } catch (e) {
@@ -744,11 +741,6 @@ async function startScreenShare(platform) {
       : `Partage d'ecran impossible (${e && e.message ? e.message : 'erreur inconnue'}).`);
     return;
   }
-  // Indique a l'encodeur qu'il s'agit d'un contenu en mouvement continu (un
-  // film), pas d'un partage de bureau majoritairement statique : de meilleures
-  // heuristiques d'encodage ici reduisent le risque d'accumulation de frames
-  // en retard (l'une des causes d'un decalage audio/video qui grandit).
-  state.screenStream.getVideoTracks()[0].contentHint = 'motion';
   setShareButtonsState(true);
   state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
 
@@ -772,73 +764,19 @@ function connectScreenToPeer(peerId) {
   state.screenPeerConnections.set(peerId, pc);
   state.screenStream.getTracks().forEach((track) => {
     const sender = pc.addTrack(track, state.screenStream);
-    if (track.kind === 'video') {
-      tuneScreenVideoSender(sender);
-      preferEfficientVideoCodec(pc, track);
-      startScreenStatsOverlay(pc, false);
-    }
+    if (track.kind === 'video') limitVideoBitrate(sender);
   });
   return pc;
 }
 
-// Priorise H264 (quasi toujours accelere materiellement - VideoToolbox sur
-// Mac, encodeurs dedies sur mobile Android/iOS) plutot que VP9 : VP9 est plus
-// efficace "a bande passante egale" en theorie, mais n'a quasiment jamais
-// d'acceleration materielle a l'encodage. Mesure en conditions reelles (voir
-// screen-stats-overlay) : forcer VP9 pour du 1080p/30fps faisait chuter la
-// resolution encodee a ~200x100px et le debit a 0.1 Mbps meme en connexion
-// directe (pas de relais TURN en cause) - l'encodage logiciel VP9 saturait le
-// CPU (Mac qui decode aussi Prime Video en HD + encode la camera en meme
-// temps), et l'encodeur reduisait agressivement la resolution pour rester en
-// temps reel, independamment du reseau. H264 materiel evite ce probleme.
-// VP9/VP8/AV1 restent en repli si le pair ne supporte pas H264.
-function preferEfficientVideoCodec(pc, track) {
-  if (typeof RTCRtpSender.getCapabilities !== 'function') return;
-  const transceiver = pc.getTransceivers().find((t) => t.sender && t.sender.track === track);
-  if (!transceiver || typeof transceiver.setCodecPreferences !== 'function') return;
-  const capabilities = RTCRtpSender.getCapabilities('video');
-  if (!capabilities || !capabilities.codecs) return;
-  const priority = ['video/h264', 'video/vp9', 'video/vp8', 'video/av1'];
-  const sorted = [...capabilities.codecs].sort((a, b) => {
-    const rank = (c) => {
-      const i = priority.indexOf(c.mimeType.toLowerCase());
-      return i === -1 ? priority.length : i;
-    };
-    return rank(a) - rank(b);
-  });
-  try {
-    transceiver.setCodecPreferences(sorted);
-  } catch (e) {
-    debugLog('setCodecPreferences refuse', e);
-  }
-}
-
-// Plafonne le debit encode (independamment de la resolution demandee) : sans
-// aucune limite, un partage 1080p peut demander bien plus que ce qu'un relais
-// TURN ou un reseau mobile encaisse, ce qui degraderait la qualite de toute
-// facon (paquets perdus, saccades). 4 Mbps est une cible haute qualite
-// realiste pour du 1080p/30fps sur une connexion correcte (domicile/4G+) tout
-// en restant absorbable par la plupart des relais - un compte TURN dedie
-// (voir README, METERED_API_KEY) rendra cette qualite bien plus atteignable
-// en pratique que le TURN public partage.
-//
-// degradationPreference='balanced' (recommandation WebRTC par defaut) degrade
-// un MELANGE de resolution et de framerate quand la bande passante reelle ne
-// suit pas la cible ci-dessus, plutot que de sacrifier un seul des deux a
-// l'extreme. Avant, ce reglage etait 'maintain-framerate' (sacrifie
-// uniquement la resolution) pour corriger un decalage audio/video sur reseau
-// mobile contraint - mais applique en permanence, meme sur un lien correct,
-// ca degradait la nettete inutilement des que le debit reel etait ne serait-
-// ce que legerement sous la cible. 'balanced' est un compromis plus sain par
-// defaut ; si la desynchro audio/video revient sur reseau tres contraint, on
-// peut reintroduire 'maintain-framerate' de facon ciblee (ex: seulement en
-// dessous d'un certain debit mesure via getStats()) plutot que globalement.
-function tuneScreenVideoSender(sender, maxBitrate = 4000000) {
+// Plafonne le debit encode (independamment de la resolution demandee) : sur
+// un relais TURN a bande passante limitee, un debit trop eleve fait plus de
+// mal (paquets perdus, saccades) qu'une image un peu moins nette.
+function limitVideoBitrate(sender, maxBitrate = 700000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
-  params.degradationPreference = 'balanced';
-  sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate/degradation) refuse', e));
+  sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
 // stream vient soit du pair (isRemote: true), soit de notre propre partage
@@ -860,102 +798,11 @@ function showScreenPreview(stream, { isRemote }) {
 }
 
 function clearScreenViewer() {
-  stopScreenStatsOverlay();
   ['netflix', 'prime'].forEach((platform) => {
     clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
     document.getElementById(`remote-request-${platform}`).classList.add('hidden');
   });
-}
-
-// Indicateur discret (resolution reelle / debit reel / codec / relais TURN ou
-// direct) affiche pendant un partage d'ecran, cote partageur (ce qu'il envoie
-// reellement, isRemote:false -> stats "outbound-rtp") comme cote spectateur
-// (ce qu'il recoit reellement, isRemote:true -> stats "inbound-rtp") : permet
-// de diagnostiquer une qualite mediocre avec de vrais chiffres plutot que
-// d'ajuster les reglages a l'aveugle une fois de plus.
-let screenStatsTimer = null;
-let screenStatsPrevSample = null;
-
-function stopScreenStatsOverlay() {
-  clearInterval(screenStatsTimer);
-  screenStatsTimer = null;
-  screenStatsPrevSample = null;
-  ['netflix', 'prime'].forEach((platform) => {
-    const el = document.getElementById(`screen-stats-${platform}`);
-    if (el) el.classList.add('hidden');
-  });
-}
-
-function startScreenStatsOverlay(pc, isRemote) {
-  stopScreenStatsOverlay();
-  const rtpType = isRemote ? 'inbound-rtp' : 'outbound-rtp';
-
-  const update = async () => {
-    let report;
-    try {
-      report = await pc.getStats();
-    } catch (e) {
-      return;
-    }
-
-    let rtp = null;
-    let candidatePairId = null;
-    report.forEach((stat) => {
-      if (stat.type === rtpType && stat.kind === 'video') rtp = stat;
-      if (stat.type === 'transport' && stat.selectedCandidatePairId) candidatePairId = stat.selectedCandidatePairId;
-    });
-    if (!rtp) return;
-
-    let codecName = '';
-    if (rtp.codecId && report.get(rtp.codecId)) {
-      codecName = (report.get(rtp.codecId).mimeType || '').split('/')[1] || '';
-    }
-
-    let relay = '';
-    let availableKbps = null;
-    const pair = candidatePairId && report.get(candidatePairId);
-    const localCandidate = pair && pair.localCandidateId && report.get(pair.localCandidateId);
-    if (localCandidate) relay = localCandidate.candidateType === 'relay' ? 'relais TURN' : 'direct';
-    // Estimation par le controle de congestion (GCC) de la bande passante
-    // sortante REELLEMENT disponible a cet instant, independamment de notre
-    // plafond (maxBitrate) : si cette valeur est deja tres basse, le vrai
-    // goulot est le reseau, pas nos reglages cote code.
-    if (!isRemote && pair && typeof pair.availableOutgoingBitrate === 'number') {
-      availableKbps = Math.round(pair.availableOutgoingBitrate / 1000);
-    }
-
-    const bytes = isRemote ? rtp.bytesReceived : rtp.bytesSent;
-    let bitrateText = '...';
-    const now = Date.now();
-    if (typeof bytes === 'number' && screenStatsPrevSample) {
-      const dtSeconds = (now - screenStatsPrevSample.ts) / 1000;
-      if (dtSeconds > 0) {
-        const kbps = Math.max(0, Math.round(((bytes - screenStatsPrevSample.bytes) * 8) / dtSeconds / 1000));
-        bitrateText = kbps < 1000 ? `${kbps}kbps` : `${(kbps / 1000).toFixed(1)}Mbps`;
-      }
-    }
-    screenStatsPrevSample = { bytes, ts: now };
-
-    // Champ standard qui dit EXPLICITEMENT pourquoi l'encodeur degrade la
-    // qualite ('cpu', 'bandwidth', 'other', ou absent/'none' si rien ne le
-    // limite) : evite de continuer a deviner entre CPU et reseau.
-    const limitReason = !isRemote && rtp.qualityLimitationReason && rtp.qualityLimitationReason !== 'none'
-      ? `limite:${rtp.qualityLimitationReason}`
-      : '';
-
-    const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
-    const availText = availableKbps !== null ? `dispo:${availableKbps < 1000 ? availableKbps + 'kbps' : (availableKbps / 1000).toFixed(1) + 'Mbps'}` : '';
-    const text = [res, bitrateText, codecName.toUpperCase(), relay, availText, limitReason].filter(Boolean).join(' · ');
-
-    ['netflix', 'prime'].forEach((platform) => {
-      const el = document.getElementById(`screen-stats-${platform}`);
-      if (el) { el.textContent = text; el.classList.remove('hidden'); }
-    });
-  };
-
-  update();
-  screenStatsTimer = setInterval(update, 2000);
 }
 
 function stopScreenShare() {
