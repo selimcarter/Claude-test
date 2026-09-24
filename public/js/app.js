@@ -729,11 +729,10 @@ async function startScreenShare(platform) {
   try {
     // Full HD / 30fps : la meilleure qualite source raisonnable pour du film
     // (au-dela de 30fps n'apporte rien, la plupart des films/series sont a
-    // 24-30fps). Le debit reste plafonne plus bas (voir tuneScreenVideoSender)
-    // et degradationPreference='maintain-framerate' privilegie une baisse de
-    // resolution plutot qu'un retard croissant si la bande passante manque -
+    // 24-30fps). Le debit reste plafonne plus bas (voir tuneScreenVideoSender),
     // donc demander cette qualite source ne cree pas de risque de saccade :
-    // au pire elle est automatiquement reduite en temps reel par l'encodeur.
+    // au pire elle est automatiquement reduite en temps reel par l'encodeur
+    // (degradationPreference='balanced', voir tuneScreenVideoSender).
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
       audio: true,
@@ -772,9 +771,38 @@ function connectScreenToPeer(peerId) {
   state.screenPeerConnections.set(peerId, pc);
   state.screenStream.getTracks().forEach((track) => {
     const sender = pc.addTrack(track, state.screenStream);
-    if (track.kind === 'video') tuneScreenVideoSender(sender);
+    if (track.kind === 'video') {
+      tuneScreenVideoSender(sender);
+      preferEfficientVideoCodec(pc, track);
+    }
   });
   return pc;
+}
+
+// Priorise VP9 (nettement plus efficace que VP8 a debit egal, ~20-30%) dans
+// l'ordre des codecs propose a la negociation SDP, sans pour autant exclure
+// les autres (VP8/H264 restent en repli si le pair ne supporte pas VP9) :
+// a debit plafonne identique (voir tuneScreenVideoSender), un codec plus
+// efficace produit une image plus nette pour le meme nombre de bits envoyes.
+function preferEfficientVideoCodec(pc, track) {
+  if (typeof RTCRtpSender.getCapabilities !== 'function') return;
+  const transceiver = pc.getTransceivers().find((t) => t.sender && t.sender.track === track);
+  if (!transceiver || typeof transceiver.setCodecPreferences !== 'function') return;
+  const capabilities = RTCRtpSender.getCapabilities('video');
+  if (!capabilities || !capabilities.codecs) return;
+  const priority = ['video/vp9', 'video/h264', 'video/vp8', 'video/av1'];
+  const sorted = [...capabilities.codecs].sort((a, b) => {
+    const rank = (c) => {
+      const i = priority.indexOf(c.mimeType.toLowerCase());
+      return i === -1 ? priority.length : i;
+    };
+    return rank(a) - rank(b);
+  });
+  try {
+    transceiver.setCodecPreferences(sorted);
+  } catch (e) {
+    debugLog('setCodecPreferences refuse', e);
+  }
 }
 
 // Plafonne le debit encode (independamment de la resolution demandee) : sans
@@ -784,20 +812,24 @@ function connectScreenToPeer(peerId) {
 // realiste pour du 1080p/30fps sur une connexion correcte (domicile/4G+) tout
 // en restant absorbable par la plupart des relais - un compte TURN dedie
 // (voir README, METERED_API_KEY) rendra cette qualite bien plus atteignable
-// en pratique que le TURN public partage. Impose aussi de privilegier le
-// maintien du FRAMERATE plutot que de la resolution quand la bande passante
-// manque malgre tout : un encodeur qui privilegie la nettete par defaut peut
-// sinon accumuler un retard croissant de frames video en attente d'encodage/
-// envoi (l'image "rattrape" son retard par a-coups) au lieu de degrader la
-// qualite en douceur - c'est la cause la plus probable d'un decalage audio/
-// video qui grandit avec le temps, particulierement visible sur reseau mobile
-// contraint (Android). C'est ce meme mecanisme qui absorbe automatiquement la
-// cible haute qualite demandee ci-dessus quand le reseau ne suit pas.
+// en pratique que le TURN public partage.
+//
+// degradationPreference='balanced' (recommandation WebRTC par defaut) degrade
+// un MELANGE de resolution et de framerate quand la bande passante reelle ne
+// suit pas la cible ci-dessus, plutot que de sacrifier un seul des deux a
+// l'extreme. Avant, ce reglage etait 'maintain-framerate' (sacrifie
+// uniquement la resolution) pour corriger un decalage audio/video sur reseau
+// mobile contraint - mais applique en permanence, meme sur un lien correct,
+// ca degradait la nettete inutilement des que le debit reel etait ne serait-
+// ce que legerement sous la cible. 'balanced' est un compromis plus sain par
+// defaut ; si la desynchro audio/video revient sur reseau tres contraint, on
+// peut reintroduire 'maintain-framerate' de facon ciblee (ex: seulement en
+// dessous d'un certain debit mesure via getStats()) plutot que globalement.
 function tuneScreenVideoSender(sender, maxBitrate = 4000000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
-  params.degradationPreference = 'maintain-framerate';
+  params.degradationPreference = 'balanced';
   sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate/degradation) refuse', e));
 }
 
@@ -886,6 +918,7 @@ function exitCssFullscreen() {
   }
   refreshCameraVideos();
   document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
 }
 
 document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
@@ -929,7 +962,13 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
 
     viewer.appendChild(cameraWidget);
     refreshCameraVideos();
+    // overflow:hidden sur <body> seul ne bloque pas toujours de facon fiable
+    // le rebond/defilement tactile sur mobile (iOS et certaines versions
+    // d'Android) : on le fixe aussi sur <html>, pour eviter qu'un defilement
+    // residuel ne declenche l'affichage de la barre d'adresse pendant le
+    // plein ecran (qui interagit mal avec 100vh, voir style.css).
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
     btn.textContent = '✕';
     btn.title = 'Quitter le plein ecran';
 

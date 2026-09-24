@@ -359,7 +359,15 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100vh; /* repli pour les navigateurs sans support de dvh */
+  /* Sur Chrome Android, 100vh se base sur la hauteur MAXIMALE theorique du
+     viewport (barre d'adresse masquee), pas sur la zone reellement visible a
+     l'instant T (barre d'adresse affichee ou non selon le defilement) - ce
+     conteneur pouvait donc etre plus grand/mal aligne que ce qui s'affiche
+     vraiment a l'ecran. 100dvh (viewport dynamique) suit la hauteur
+     reellement visible ; ignore silencieusement par les navigateurs qui ne
+     le supportent pas, qui gardent alors le repli 100vh ci-dessus. */
+  height: 100dvh;
   aspect-ratio: auto;
   z-index: 1000;
   border-radius: 0;
