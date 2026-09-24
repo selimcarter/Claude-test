@@ -351,6 +351,25 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 
 .fullscreen-btn:hover { background: rgba(10, 11, 16, 0.85); }
 
+/* Indicateur discret (resolution / debit reel / codec / relais TURN ou
+   direct) affiche pendant un partage d'ecran : permet de diagnostiquer une
+   qualite mediocre avec de vrais chiffres plutot que des suppositions,
+   directement lisible a l'ecran (utile sur mobile, sans devtools). */
+.screen-stats-overlay {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 6;
+  background: rgba(10, 11, 16, 0.65);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.2px;
+  pointer-events: none;
+}
+
 /* "Faux" plein ecran en CSS plutot que l'API Fullscreen native : celle-ci
    n'est pas supportee sur un <div> par Safari iOS (seulement sur <video>,
    et sans possibilite d'afficher la camera par-dessus). Cette approche

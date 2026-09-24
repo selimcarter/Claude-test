@@ -677,6 +677,7 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
           if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
             event.receiver.playoutDelayHint = 0.25;
           }
+          if (event.track.kind === 'video') startScreenStatsOverlay(pc, true);
           showScreenPreview(event.streams[0], { isRemote: true });
         },
       });
@@ -774,6 +775,7 @@ function connectScreenToPeer(peerId) {
     if (track.kind === 'video') {
       tuneScreenVideoSender(sender);
       preferEfficientVideoCodec(pc, track);
+      startScreenStatsOverlay(pc, false);
     }
   });
   return pc;
@@ -852,11 +854,86 @@ function showScreenPreview(stream, { isRemote }) {
 }
 
 function clearScreenViewer() {
+  stopScreenStatsOverlay();
   ['netflix', 'prime'].forEach((platform) => {
     clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
     document.getElementById(`remote-request-${platform}`).classList.add('hidden');
   });
+}
+
+// Indicateur discret (resolution reelle / debit reel / codec / relais TURN ou
+// direct) affiche pendant un partage d'ecran, cote partageur (ce qu'il envoie
+// reellement, isRemote:false -> stats "outbound-rtp") comme cote spectateur
+// (ce qu'il recoit reellement, isRemote:true -> stats "inbound-rtp") : permet
+// de diagnostiquer une qualite mediocre avec de vrais chiffres plutot que
+// d'ajuster les reglages a l'aveugle une fois de plus.
+let screenStatsTimer = null;
+let screenStatsPrevSample = null;
+
+function stopScreenStatsOverlay() {
+  clearInterval(screenStatsTimer);
+  screenStatsTimer = null;
+  screenStatsPrevSample = null;
+  ['netflix', 'prime'].forEach((platform) => {
+    const el = document.getElementById(`screen-stats-${platform}`);
+    if (el) el.classList.add('hidden');
+  });
+}
+
+function startScreenStatsOverlay(pc, isRemote) {
+  stopScreenStatsOverlay();
+  const rtpType = isRemote ? 'inbound-rtp' : 'outbound-rtp';
+
+  const update = async () => {
+    let report;
+    try {
+      report = await pc.getStats();
+    } catch (e) {
+      return;
+    }
+
+    let rtp = null;
+    let candidatePairId = null;
+    report.forEach((stat) => {
+      if (stat.type === rtpType && stat.kind === 'video') rtp = stat;
+      if (stat.type === 'transport' && stat.selectedCandidatePairId) candidatePairId = stat.selectedCandidatePairId;
+    });
+    if (!rtp) return;
+
+    let codecName = '';
+    if (rtp.codecId && report.get(rtp.codecId)) {
+      codecName = (report.get(rtp.codecId).mimeType || '').split('/')[1] || '';
+    }
+
+    let relay = '';
+    const pair = candidatePairId && report.get(candidatePairId);
+    const localCandidate = pair && pair.localCandidateId && report.get(pair.localCandidateId);
+    if (localCandidate) relay = localCandidate.candidateType === 'relay' ? 'relais TURN' : 'direct';
+
+    const bytes = isRemote ? rtp.bytesReceived : rtp.bytesSent;
+    let bitrateText = '...';
+    const now = Date.now();
+    if (typeof bytes === 'number' && screenStatsPrevSample) {
+      const dtSeconds = (now - screenStatsPrevSample.ts) / 1000;
+      if (dtSeconds > 0) {
+        const kbps = Math.max(0, Math.round(((bytes - screenStatsPrevSample.bytes) * 8) / dtSeconds / 1000));
+        bitrateText = `${(kbps / 1000).toFixed(1)} Mbps`;
+      }
+    }
+    screenStatsPrevSample = { bytes, ts: now };
+
+    const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
+    const text = [res, bitrateText, codecName.toUpperCase(), relay].filter(Boolean).join(' · ');
+
+    ['netflix', 'prime'].forEach((platform) => {
+      const el = document.getElementById(`screen-stats-${platform}`);
+      if (el) { el.textContent = text; el.classList.remove('hidden'); }
+    });
+  };
+
+  update();
+  screenStatsTimer = setInterval(update, 2000);
 }
 
 function stopScreenShare() {
