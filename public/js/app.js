@@ -882,6 +882,7 @@ function exitCssFullscreen() {
     cameraWidget.style.top = cameraWidget.dataset.savedTop;
     cameraWidget.style.left = cameraWidget.dataset.savedLeft;
     cameraWidget.style.right = cameraWidget.dataset.savedRight;
+    cameraWidget.style.bottom = cameraWidget.dataset.savedBottom || '';
   }
   refreshCameraVideos();
   document.body.style.overflow = '';
@@ -920,9 +921,11 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     cameraWidget.dataset.savedTop = cameraWidget.style.top;
     cameraWidget.dataset.savedLeft = cameraWidget.style.left;
     cameraWidget.dataset.savedRight = cameraWidget.style.right;
+    cameraWidget.dataset.savedBottom = cameraWidget.style.bottom;
     cameraWidget.style.top = '';
     cameraWidget.style.left = '';
     cameraWidget.style.right = '';
+    cameraWidget.style.bottom = '';
 
     viewer.appendChild(cameraWidget);
     refreshCameraVideos();
@@ -975,6 +978,14 @@ document.addEventListener('keydown', (e) => {
     widget.style.left = saved.left + 'px';
     widget.style.top = saved.top + 'px';
     widget.style.right = 'auto';
+    // Neutralise aussi "bottom" : la regle CSS mobile positionne la bulle par
+    // defaut via bottom (pas top), voir plus bas. Sans ce reset, top ET
+    // bottom restent actifs en meme temps une fois deplacee, ce qui force le
+    // navigateur a ETIRER la hauteur de la bulle pour combler l'ecart entre
+    // les deux au lieu de garder sa taille naturelle - c'etait le vrai bug
+    // (visible surtout en glissant la bulle vers le haut, ou l'ecart devient
+    // enorme).
+    widget.style.bottom = 'auto';
   }
 
   // Taille choisie par l'utilisateur (boutons -/+ plus bas), persistee pour
@@ -995,6 +1006,11 @@ document.addEventListener('keydown', (e) => {
     widget.style.left = left + 'px';
     widget.style.top = top + 'px';
     widget.style.right = 'auto';
+    // Voir le commentaire plus haut : sans ce reset, la regle CSS mobile
+    // (bottom: 96px) reste active en meme temps que le "top" qu'on vient de
+    // fixer, et le navigateur etire la bulle pour combler l'ecart entre les
+    // deux au lieu de garder sa taille naturelle.
+    widget.style.bottom = 'auto';
     localStorage.setItem('cameraWidgetPos', JSON.stringify({ left, top }));
   }
 
