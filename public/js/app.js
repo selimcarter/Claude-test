@@ -913,9 +913,17 @@ function startScreenStatsOverlay(pc, isRemote) {
     }
 
     let relay = '';
+    let availableKbps = null;
     const pair = candidatePairId && report.get(candidatePairId);
     const localCandidate = pair && pair.localCandidateId && report.get(pair.localCandidateId);
     if (localCandidate) relay = localCandidate.candidateType === 'relay' ? 'relais TURN' : 'direct';
+    // Estimation par le controle de congestion (GCC) de la bande passante
+    // sortante REELLEMENT disponible a cet instant, independamment de notre
+    // plafond (maxBitrate) : si cette valeur est deja tres basse, le vrai
+    // goulot est le reseau, pas nos reglages cote code.
+    if (!isRemote && pair && typeof pair.availableOutgoingBitrate === 'number') {
+      availableKbps = Math.round(pair.availableOutgoingBitrate / 1000);
+    }
 
     const bytes = isRemote ? rtp.bytesReceived : rtp.bytesSent;
     let bitrateText = '...';
@@ -924,13 +932,21 @@ function startScreenStatsOverlay(pc, isRemote) {
       const dtSeconds = (now - screenStatsPrevSample.ts) / 1000;
       if (dtSeconds > 0) {
         const kbps = Math.max(0, Math.round(((bytes - screenStatsPrevSample.bytes) * 8) / dtSeconds / 1000));
-        bitrateText = `${(kbps / 1000).toFixed(1)} Mbps`;
+        bitrateText = kbps < 1000 ? `${kbps}kbps` : `${(kbps / 1000).toFixed(1)}Mbps`;
       }
     }
     screenStatsPrevSample = { bytes, ts: now };
 
+    // Champ standard qui dit EXPLICITEMENT pourquoi l'encodeur degrade la
+    // qualite ('cpu', 'bandwidth', 'other', ou absent/'none' si rien ne le
+    // limite) : evite de continuer a deviner entre CPU et reseau.
+    const limitReason = !isRemote && rtp.qualityLimitationReason && rtp.qualityLimitationReason !== 'none'
+      ? `limite:${rtp.qualityLimitationReason}`
+      : '';
+
     const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
-    const text = [res, bitrateText, codecName.toUpperCase(), relay].filter(Boolean).join(' · ');
+    const availText = availableKbps !== null ? `dispo:${availableKbps < 1000 ? availableKbps + 'kbps' : (availableKbps / 1000).toFixed(1) + 'Mbps'}` : '';
+    const text = [res, bitrateText, codecName.toUpperCase(), relay, availText, limitReason].filter(Boolean).join(' · ');
 
     ['netflix', 'prime'].forEach((platform) => {
       const el = document.getElementById(`screen-stats-${platform}`);
