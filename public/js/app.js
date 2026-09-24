@@ -781,18 +781,24 @@ function connectScreenToPeer(peerId) {
   return pc;
 }
 
-// Priorise VP9 (nettement plus efficace que VP8 a debit egal, ~20-30%) dans
-// l'ordre des codecs propose a la negociation SDP, sans pour autant exclure
-// les autres (VP8/H264 restent en repli si le pair ne supporte pas VP9) :
-// a debit plafonne identique (voir tuneScreenVideoSender), un codec plus
-// efficace produit une image plus nette pour le meme nombre de bits envoyes.
+// Priorise H264 (quasi toujours accelere materiellement - VideoToolbox sur
+// Mac, encodeurs dedies sur mobile Android/iOS) plutot que VP9 : VP9 est plus
+// efficace "a bande passante egale" en theorie, mais n'a quasiment jamais
+// d'acceleration materielle a l'encodage. Mesure en conditions reelles (voir
+// screen-stats-overlay) : forcer VP9 pour du 1080p/30fps faisait chuter la
+// resolution encodee a ~200x100px et le debit a 0.1 Mbps meme en connexion
+// directe (pas de relais TURN en cause) - l'encodage logiciel VP9 saturait le
+// CPU (Mac qui decode aussi Prime Video en HD + encode la camera en meme
+// temps), et l'encodeur reduisait agressivement la resolution pour rester en
+// temps reel, independamment du reseau. H264 materiel evite ce probleme.
+// VP9/VP8/AV1 restent en repli si le pair ne supporte pas H264.
 function preferEfficientVideoCodec(pc, track) {
   if (typeof RTCRtpSender.getCapabilities !== 'function') return;
   const transceiver = pc.getTransceivers().find((t) => t.sender && t.sender.track === track);
   if (!transceiver || typeof transceiver.setCodecPreferences !== 'function') return;
   const capabilities = RTCRtpSender.getCapabilities('video');
   if (!capabilities || !capabilities.codecs) return;
-  const priority = ['video/vp9', 'video/h264', 'video/vp8', 'video/av1'];
+  const priority = ['video/h264', 'video/vp9', 'video/vp8', 'video/av1'];
   const sorted = [...capabilities.codecs].sort((a, b) => {
     const rank = (c) => {
       const i = priority.indexOf(c.mimeType.toLowerCase());
