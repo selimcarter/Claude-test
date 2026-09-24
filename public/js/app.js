@@ -665,7 +665,21 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
   if (isScreen) {
     pc = state.screenPeerConnections.get(from);
     if (!pc) {
-      pc = createPeerConnection(from, { kind: 'screen', onTrack: (event) => showScreenPreview(event.streams[0], { isRemote: true }) });
+      pc = createPeerConnection(from, {
+        kind: 'screen',
+        onTrack: (event) => {
+          // Compense le delai typiquement plus eleve de la capture audio
+          // d'onglet/systeme cote partageur (particularite connue de
+          // getDisplayMedia sur Chrome desktop, plus lente que la capture
+          // video) : sans ca, le son recu peut arriver en avance sur l'image.
+          // On retarde volontairement sa restitution pour les realigner,
+          // plutot qu'un offset fixe code en dur pour un seul cas observe.
+          if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
+            event.receiver.playoutDelayHint = 0.25;
+          }
+          showScreenPreview(event.streams[0], { isRemote: true });
+        },
+      });
       state.screenPeerConnections.set(from, pc);
     }
   } else {
@@ -727,6 +741,11 @@ async function startScreenShare(platform) {
       : `Partage d'ecran impossible (${e && e.message ? e.message : 'erreur inconnue'}).`);
     return;
   }
+  // Indique a l'encodeur qu'il s'agit d'un contenu en mouvement continu (un
+  // film), pas d'un partage de bureau majoritairement statique : de meilleures
+  // heuristiques d'encodage ici reduisent le risque d'accumulation de frames
+  // en retard (l'une des causes d'un decalage audio/video qui grandit).
+  state.screenStream.getVideoTracks()[0].contentHint = 'motion';
   setShareButtonsState(true);
   state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
 
@@ -750,19 +769,27 @@ function connectScreenToPeer(peerId) {
   state.screenPeerConnections.set(peerId, pc);
   state.screenStream.getTracks().forEach((track) => {
     const sender = pc.addTrack(track, state.screenStream);
-    if (track.kind === 'video') limitVideoBitrate(sender);
+    if (track.kind === 'video') tuneScreenVideoSender(sender);
   });
   return pc;
 }
 
 // Plafonne le debit encode (independamment de la resolution demandee) : sur
 // un relais TURN a bande passante limitee, un debit trop eleve fait plus de
-// mal (paquets perdus, saccades) qu'une image un peu moins nette.
-function limitVideoBitrate(sender, maxBitrate = 700000) {
+// mal (paquets perdus, saccades) qu'une image un peu moins nette. Impose
+// aussi de privilegier le maintien du FRAMERATE plutot que de la resolution
+// quand la bande passante manque : un encodeur qui privilegie la nettete par
+// defaut peut sinon accumuler un retard croissant de frames video en attente
+// d'encodage/envoi (l'image "rattrape" son retard par a-coups) au lieu de
+// degrader la qualite en douceur - c'est la cause la plus probable d'un
+// decalage audio/video qui grandit avec le temps (plutot qu'un simple offset
+// fixe), particulierement visible sur reseau mobile contraint (Android).
+function tuneScreenVideoSender(sender, maxBitrate = 700000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
-  sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
+  params.degradationPreference = 'maintain-framerate';
+  sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate/degradation) refuse', e));
 }
 
 // stream vient soit du pair (isRemote: true), soit de notre propre partage
@@ -849,16 +876,6 @@ function exitCssFullscreen() {
   }
   refreshCameraVideos();
   document.body.style.overflow = '';
-
-  // L'API d'orientation n'accepte de deverrouiller que si l'API plein ecran
-  // native a reellement ete engagee (voir plus bas) ; on essaie les deux,
-  // silencieusement, sans bloquer si l'une des deux n'est pas disponible.
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  }
-  if (screen.orientation && screen.orientation.unlock) {
-    try { screen.orientation.unlock(); } catch (e) { /* ignore */ }
-  }
 }
 
 document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
@@ -904,37 +921,22 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     btn.textContent = '✕';
     btn.title = 'Quitter le plein ecran';
 
-    // Le "faux" plein ecran CSS marche partout (y compris iOS Safari), mais
-    // l'API native est en plus tentee ici : la rotation forcee en paysage
-    // (screen.orientation.lock) n'est autorisee par le navigateur que si le
-    // document est reellement en plein ecran natif. Sur iOS, requestFullscreen
-    // sur un <div> n'est pas supporte : ca echoue silencieusement, la vue
-    // reste en CSS fullscreen quand meme (juste sans rotation forcee - il
-    // suffit alors de tourner le telephone manuellement).
-    const request = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
-    if (request) {
-      Promise.resolve(request.call(viewer))
-        .then(() => {
-          if (screen.orientation && screen.orientation.lock) {
-            return screen.orientation.lock('landscape');
-          }
-        })
-        .catch((e) => debugLog('plein ecran natif / rotation non disponible', e));
-    }
+    // Volontairement PAS d'appel a l'API Fullscreen native (requestFullscreen)
+    // ici, meme si elle est disponible : sur Chrome Android, l'element mis en
+    // plein ecran natif devient un nouveau "containing block" pour ses
+    // descendants position:fixed (dont la bulle camera), et combine a
+    // l'overflow:hidden de .screen-share-viewer, ca peut la faire disparaitre
+    // (clipee/repositionnee hors champ) - constat qui avait deja motive
+    // l'usage du faux plein ecran CSS plutot que l'API native sur iOS (voir
+    // plus haut). Le faux plein ecran CSS suffit a remplir tout le viewport
+    // sans ce probleme ; seul inconvenient : pas de rotation forcee en
+    // paysage (screen.orientation.lock necessite un vrai plein ecran natif),
+    // il faut tourner le telephone manuellement, comme deja le cas sur iOS.
   });
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.querySelector('.screen-share-viewer.css-fullscreen')) {
-    exitCssFullscreen();
-  }
-});
-
-// Si le plein ecran natif est quitte par un autre moyen que notre bouton
-// (bouton du navigateur, glissement vers le bas sur mobile...), on remet
-// l'etat CSS en phase.
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && document.querySelector('.screen-share-viewer.css-fullscreen')) {
     exitCssFullscreen();
   }
 });
@@ -947,11 +949,25 @@ document.addEventListener('fullscreenchange', () => {
   let offsetX = 0;
   let offsetY = 0;
 
+  const MIN_SIZE = 110;
+  const MAX_SIZE = 320;
+  const SIZE_STEP = 20;
+
   const saved = JSON.parse(localStorage.getItem('cameraWidgetPos') || 'null');
   if (saved) {
     widget.style.left = saved.left + 'px';
     widget.style.top = saved.top + 'px';
     widget.style.right = 'auto';
+  }
+
+  // Taille choisie par l'utilisateur (boutons -/+ plus bas), persistee pour
+  // ne pas avoir a la reajuster a chaque visite. Une seule dimension (largeur)
+  // suffit : la hauteur suit automatiquement via l'aspect-ratio CSS du cadre
+  // video, et cette largeur inline s'applique aussi bien en plein ecran
+  // (.css-fullscreen) qu'en usage normal, portrait comme paysage.
+  const savedSize = Number(localStorage.getItem('cameraWidgetSize'));
+  if (savedSize >= MIN_SIZE && savedSize <= MAX_SIZE) {
+    widget.style.width = savedSize + 'px';
   }
 
   function clampAndApply(left, top) {
@@ -980,4 +996,32 @@ document.addEventListener('fullscreenchange', () => {
 
   handle.addEventListener('pointerup', () => { dragging = false; });
   handle.addEventListener('pointercancel', () => { dragging = false; });
+
+  // Redimensionnement (boutons - / +) : on ne change que la largeur, la
+  // hauteur suit automatiquement (aspect-ratio CSS du cadre video).
+  function resizeBy(delta) {
+    const current = widget.getBoundingClientRect().width;
+    const next = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(current + delta)));
+    widget.style.width = next + 'px';
+    localStorage.setItem('cameraWidgetSize', String(next));
+    // La bulle peut deborder de l'ecran apres un agrandissement (surtout
+    // proche d'un bord) : on reclampe sa position avec sa nouvelle taille.
+    const rect = widget.getBoundingClientRect();
+    clampAndApply(rect.left, rect.top);
+  }
+
+  document.getElementById('camera-shrink-btn').addEventListener('click', () => resizeBy(-SIZE_STEP));
+  document.getElementById('camera-grow-btn').addEventListener('click', () => resizeBy(SIZE_STEP));
+
+  // Une rotation d'ecran (ou un redimensionnement de fenetre) peut laisser la
+  // bulle hors-champ si sa position avait ete fixee par glisser-depose dans
+  // l'orientation precedente (ex: proche du bas en portrait, qui n'existe
+  // plus une fois passe en paysage, viewport beaucoup moins haut). On ne
+  // touche a rien si la bulle n'a jamais ete deplacee (elle suit alors les
+  // regles CSS responsives normales, deja adaptees a la taille d'ecran).
+  window.addEventListener('resize', () => {
+    if (widget.style.left && widget.style.top) {
+      clampAndApply(parseFloat(widget.style.left), parseFloat(widget.style.top));
+    }
+  });
 })();
