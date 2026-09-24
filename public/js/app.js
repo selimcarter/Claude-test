@@ -727,12 +727,15 @@ async function startScreenShare(platform) {
     return;
   }
   try {
-    // Resolution/frequence limitees : le relais TURN public gratuit a une
-    // bande passante restreinte (partagee entre des milliers d'utilisateurs) ;
-    // un partage plein ecran/HD non contraint sature vite ce relais et
-    // provoque des saccades. 720p/15fps reste largement lisible.
+    // Full HD / 30fps : la meilleure qualite source raisonnable pour du film
+    // (au-dela de 30fps n'apporte rien, la plupart des films/series sont a
+    // 24-30fps). Le debit reste plafonne plus bas (voir tuneScreenVideoSender)
+    // et degradationPreference='maintain-framerate' privilegie une baisse de
+    // resolution plutot qu'un retard croissant si la bande passante manque -
+    // donc demander cette qualite source ne cree pas de risque de saccade :
+    // au pire elle est automatiquement reduite en temps reel par l'encodeur.
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 20 } },
+      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
       audio: true,
     });
   } catch (e) {
@@ -774,17 +777,23 @@ function connectScreenToPeer(peerId) {
   return pc;
 }
 
-// Plafonne le debit encode (independamment de la resolution demandee) : sur
-// un relais TURN a bande passante limitee, un debit trop eleve fait plus de
-// mal (paquets perdus, saccades) qu'une image un peu moins nette. Impose
-// aussi de privilegier le maintien du FRAMERATE plutot que de la resolution
-// quand la bande passante manque : un encodeur qui privilegie la nettete par
-// defaut peut sinon accumuler un retard croissant de frames video en attente
-// d'encodage/envoi (l'image "rattrape" son retard par a-coups) au lieu de
-// degrader la qualite en douceur - c'est la cause la plus probable d'un
-// decalage audio/video qui grandit avec le temps (plutot qu'un simple offset
-// fixe), particulierement visible sur reseau mobile contraint (Android).
-function tuneScreenVideoSender(sender, maxBitrate = 700000) {
+// Plafonne le debit encode (independamment de la resolution demandee) : sans
+// aucune limite, un partage 1080p peut demander bien plus que ce qu'un relais
+// TURN ou un reseau mobile encaisse, ce qui degraderait la qualite de toute
+// facon (paquets perdus, saccades). 4 Mbps est une cible haute qualite
+// realiste pour du 1080p/30fps sur une connexion correcte (domicile/4G+) tout
+// en restant absorbable par la plupart des relais - un compte TURN dedie
+// (voir README, METERED_API_KEY) rendra cette qualite bien plus atteignable
+// en pratique que le TURN public partage. Impose aussi de privilegier le
+// maintien du FRAMERATE plutot que de la resolution quand la bande passante
+// manque malgre tout : un encodeur qui privilegie la nettete par defaut peut
+// sinon accumuler un retard croissant de frames video en attente d'encodage/
+// envoi (l'image "rattrape" son retard par a-coups) au lieu de degrader la
+// qualite en douceur - c'est la cause la plus probable d'un decalage audio/
+// video qui grandit avec le temps, particulierement visible sur reseau mobile
+// contraint (Android). C'est ce meme mecanisme qui absorbe automatiquement la
+// cible haute qualite demandee ci-dessus quand le reseau ne suit pas.
+function tuneScreenVideoSender(sender, maxBitrate = 4000000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
@@ -949,9 +958,17 @@ document.addEventListener('keydown', (e) => {
   let offsetX = 0;
   let offsetY = 0;
 
-  const MIN_SIZE = 110;
+  const MIN_SIZE = 130;
   const MAX_SIZE = 320;
   const SIZE_STEP = 20;
+
+  // Plafond reellement disponible sur l'ecran actuel (avec une marge de
+  // 40px) : MAX_SIZE seul deborderait sur un petit telephone (ex: 320px de
+  // large sur un ecran de 360px de large ne laisserait presque plus de film
+  // visible).
+  function currentMaxSize() {
+    return Math.min(MAX_SIZE, window.innerWidth - 40, window.innerHeight - 40);
+  }
 
   const saved = JSON.parse(localStorage.getItem('cameraWidgetPos') || 'null');
   if (saved) {
@@ -966,7 +983,7 @@ document.addEventListener('keydown', (e) => {
   // video, et cette largeur inline s'applique aussi bien en plein ecran
   // (.css-fullscreen) qu'en usage normal, portrait comme paysage.
   const savedSize = Number(localStorage.getItem('cameraWidgetSize'));
-  if (savedSize >= MIN_SIZE && savedSize <= MAX_SIZE) {
+  if (savedSize >= MIN_SIZE && savedSize <= currentMaxSize()) {
     widget.style.width = savedSize + 'px';
   }
 
@@ -1001,13 +1018,22 @@ document.addEventListener('keydown', (e) => {
   // hauteur suit automatiquement (aspect-ratio CSS du cadre video).
   function resizeBy(delta) {
     const current = widget.getBoundingClientRect().width;
-    const next = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(current + delta)));
+    const next = Math.min(currentMaxSize(), Math.max(MIN_SIZE, Math.round(current + delta)));
     widget.style.width = next + 'px';
     localStorage.setItem('cameraWidgetSize', String(next));
-    // La bulle peut deborder de l'ecran apres un agrandissement (surtout
-    // proche d'un bord) : on reclampe sa position avec sa nouvelle taille.
-    const rect = widget.getBoundingClientRect();
-    clampAndApply(rect.left, rect.top);
+    // On ne reclampe la position QUE si la bulle a deja ete deplacee a la
+    // main (position en pixels bruts) : sinon elle est positionnee par une
+    // regle CSS ancree a un coin (top/right normal, ou top/right dedie au
+    // plein ecran) qui reste valide quelle que soit la largeur. La reclamper
+    // ici de toute facon la convertirait en position figee (clampAndApply
+    // fixe aussi right:auto) qui perdrait cet ancrage et ne suivrait plus le
+    // bord lors d'une rotation ou d'un redimensionnement de fenetre ulterieur
+    // - c'etait le bug : un simple clic sur +/- decrochait la bulle de son
+    // coin, en plein ecran comme en usage normal.
+    if (widget.style.left && widget.style.top) {
+      const rect = widget.getBoundingClientRect();
+      clampAndApply(rect.left, rect.top);
+    }
   }
 
   document.getElementById('camera-shrink-btn').addEventListener('click', () => resizeBy(-SIZE_STEP));
