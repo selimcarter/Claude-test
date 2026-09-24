@@ -1006,13 +1006,37 @@ document.addEventListener('keydown', (e) => {
     offsetY = e.clientY - rect.top;
   });
 
+  // Regroupe les mises a jour de position par frame d'animation plutot que
+  // d'ecrire left/top directement a chaque evenement pointermove (qui peut se
+  // declencher 60-120+ fois/seconde) : des ecritures de mise en page aussi
+  // frequentes et non regroupees peuvent produire des images intermediaires
+  // incoherentes (etirement/deformation visible) pendant un glissement rapide,
+  // en particulier combinees a l'aspect-ratio CSS du cadre video.
+  let pendingFrame = null;
+  let pendingLeft = 0;
+  let pendingTop = 0;
+
+  function cancelPendingFrame() {
+    if (pendingFrame !== null) {
+      cancelAnimationFrame(pendingFrame);
+      pendingFrame = null;
+    }
+  }
+
   handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    clampAndApply(e.clientX - offsetX, e.clientY - offsetY);
+    pendingLeft = e.clientX - offsetX;
+    pendingTop = e.clientY - offsetY;
+    if (pendingFrame === null) {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null;
+        clampAndApply(pendingLeft, pendingTop);
+      });
+    }
   });
 
-  handle.addEventListener('pointerup', () => { dragging = false; });
-  handle.addEventListener('pointercancel', () => { dragging = false; });
+  handle.addEventListener('pointerup', () => { dragging = false; cancelPendingFrame(); });
+  handle.addEventListener('pointercancel', () => { dragging = false; cancelPendingFrame(); });
 
   // Redimensionnement (boutons - / +) : on ne change que la largeur, la
   // hauteur suit automatiquement (aspect-ratio CSS du cadre video).
