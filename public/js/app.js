@@ -1,3 +1,7 @@
+import { t, initI18n } from './i18n.js';
+
+initI18n();
+
 // ===================== Etat global =====================
 const state = {
   roomId: null,
@@ -113,7 +117,7 @@ function rememberName(name) {
 
 document.getElementById('create-room-btn').addEventListener('click', () => {
   const name = nameInput.value.trim();
-  if (!name) return showToast('Entrez votre prenom d\'abord.');
+  if (!name) return showToast(t('errors.enterNameFirst'));
   rememberName(name);
   enterRoom(genRoomCode(), name);
 });
@@ -121,8 +125,8 @@ document.getElementById('create-room-btn').addEventListener('click', () => {
 document.getElementById('join-room-btn').addEventListener('click', () => {
   const name = nameInput.value.trim();
   const code = roomCodeInput.value.trim().toUpperCase();
-  if (!name) return showToast('Entrez votre prenom d\'abord.');
-  if (!code) return showToast('Entrez un code de salon.');
+  if (!name) return showToast(t('errors.enterNameFirst'));
+  if (!code) return showToast(t('errors.enterRoomCode'));
   rememberName(name);
   enterRoom(code, name);
 });
@@ -130,7 +134,7 @@ document.getElementById('join-room-btn').addEventListener('click', () => {
 // Lien avec ?room=CODE + prenom deja memorise : on rejoint en un clic plutot
 // que de faire ressaisir le prenom et re-cliquer "Rejoindre" a chaque fois.
 if (params.get('room') && savedName) {
-  document.getElementById('join-room-btn').textContent = `Rejoindre en tant que ${savedName}`;
+  document.getElementById('join-room-btn').textContent = t('landing.joinAs', { name: savedName });
 }
 
 function enterRoom(roomId, name) {
@@ -165,7 +169,7 @@ socket.on('connect', () => {
   clearTimeout(reconnectDebounceTimer);
   reconnectDebounceTimer = setTimeout(() => {
     debugLog('Connexion stabilisee : on rejoint a nouveau le salon.');
-    showToast('Connexion retablie, on se reconnecte au salon...', 3000);
+    showToast(t('status.reconnected'), 3000);
 
     state.peerConnections.forEach((pc) => pc.close());
     state.peerConnections.clear();
@@ -188,11 +192,11 @@ socket.on('connect', () => {
 socket.on('disconnect', () => {
   if (!hasJoinedOnce) return;
   clearTimeout(reconnectDebounceTimer);
-  showToast('Connexion au serveur perdue, reconnexion en cours...', 5000);
+  showToast(t('status.disconnected'), 5000);
 });
 
 socket.on('room-full', () => {
-  showToast('Ce salon est deja complet (2 personnes max).');
+  showToast(t('status.roomFull'));
 });
 
 socket.on('joined', ({ self, peers }) => {
@@ -219,7 +223,7 @@ socket.on('joined', ({ self, peers }) => {
 });
 
 socket.on('peer-joined', ({ id, name }) => {
-  showToast(`${name} a rejoint le salon.`);
+  showToast(t('status.peerJoined', { name }));
   connectToPeer(id);
   if (state.screenStream) {
     connectScreenToPeer(id);
@@ -244,7 +248,10 @@ socket.on('peer-left', ({ id }) => {
 
 socket.on('room-users', (users) => renderPresence(users));
 
+let lastPresenceUsers = [];
+
 function renderPresence(users) {
+  lastPresenceUsers = users;
   const list = document.getElementById('presence-list');
   list.innerHTML = '';
   users.forEach((u) => {
@@ -256,7 +263,7 @@ function renderPresence(users) {
     // Nom d'utilisateur ajoute en texte brut (jamais via innerHTML) : c'est
     // une valeur choisie librement par l'autre personne, un nom du style
     // "<img src=x onerror=...>" ne doit jamais pouvoir s'executer ici.
-    chip.appendChild(document.createTextNode(u.id === state.myId ? `${u.name} (vous)` : u.name));
+    chip.appendChild(document.createTextNode(u.id === state.myId ? `${u.name} ${t('presence.you')}` : u.name));
     list.appendChild(chip);
   });
 }
@@ -278,7 +285,7 @@ tabButtons.forEach((btn) => {
     // le monde (le panneau video se retrouve masque). On bloque donc le
     // changement tant qu'un partage est actif sur une autre plateforme.
     if (state.activeSharePlatform && btn.dataset.platform !== state.activeSharePlatform) {
-      showToast("Impossible de changer d'onglet pendant un partage d'ecran. Arretez d'abord le partage.", 4000);
+      showToast(t('share.cantSwitchTab'), 4000);
       return;
     }
     setPlatform(btn.dataset.platform);
@@ -367,12 +374,12 @@ document.getElementById('copy-link-btn').addEventListener('click', () => {
   if (navigator.share) {
     navigator.share({
       title: 'Watch Together',
-      text: 'Rejoins-moi sur Watch Together :',
+      text: t('share.text'),
       url: location.href,
     }).catch(() => {}); // l'utilisateur a simplement annule le partage
     return;
   }
-  navigator.clipboard.writeText(location.href).then(() => showToast('Lien copie !'));
+  navigator.clipboard.writeText(location.href).then(() => showToast(t('status.linkCopied')));
 });
 
 // ===================== YouTube =====================
@@ -411,7 +418,7 @@ function loadYoutube(videoId, { broadcast }) {
 document.getElementById('yt-load-btn').addEventListener('click', () => {
   const raw = document.getElementById('yt-url-input').value;
   const videoId = extractYoutubeId(raw);
-  if (!videoId) return showToast('URL ou ID YouTube invalide.');
+  if (!videoId) return showToast(t('yt.invalidUrl'));
   loadYoutube(videoId, { broadcast: true });
 });
 
@@ -446,22 +453,22 @@ socket.on('yt-state', ({ state: playState, time, ts }) => {
 document.querySelectorAll('.request-pause-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     socket.emit('manual-pause-ping');
-    showToast('Demande de pause envoyee.');
+    showToast(t('share.pauseSent'));
   });
 });
 document.querySelectorAll('.request-forward-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     socket.emit('manual-forward-ping');
-    showToast("Demande d'avancer envoyee.");
+    showToast(t('share.forwardSent'));
   });
 });
 
 socket.on('manual-pause-ping', ({ from }) => {
-  showRequestPopup(`⏸ ${from} demande une pause !`);
+  showRequestPopup(t('share.pauseFromPeer', { from }));
 });
 
 socket.on('manual-forward-ping', ({ from }) => {
-  showRequestPopup(`⏩ ${from} demande d'avancer la lecture !`);
+  showRequestPopup(t('share.forwardFromPeer', { from }));
 });
 
 // ===================== Camera / WebRTC =====================
@@ -503,7 +510,7 @@ function showPlayOverlay(videoEl) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'video-play-overlay';
-  btn.textContent = '▶ Cliquer pour activer la video';
+  btn.textContent = t('video.playOverlay');
   btn.addEventListener('click', () => {
     videoEl.play().then(() => {
       btn.remove();
@@ -520,32 +527,32 @@ function mediaErrorMessage(err, what) {
   switch (err && err.name) {
     case 'NotAllowedError':
     case 'SecurityError':
-      return `Acces ${what} refuse. Autorisez-le dans les parametres du navigateur (icone cadenas/camera dans la barre d'adresse) puis rechargez la page.`;
+      return t('media.errorDenied', { what });
     case 'NotFoundError':
     case 'OverconstrainedError':
-      return `Aucun peripherique ${what} detecte sur cet appareil.`;
+      return t('media.errorNotFound', { what });
     case 'NotReadableError':
-      return `${what} deja utilise par une autre application, un autre onglet ou un autre navigateur. Fermez-le puis reessayez.`;
+      return t('media.errorInUse', { what });
     default:
-      return `Impossible d'acceder a ${what} (${err && err.message ? err.message : 'erreur inconnue'}).`;
+      return t('media.errorGeneric', { what, msg: err && err.message ? err.message : t('errors.unknown') });
   }
 }
 
 async function initMedia() {
   // Deja en possession d'une camera active (ex: reconnexion apres un reveil
   // du serveur) : pas besoin de redemander l'acces, on reutilise le flux.
-  if (state.localStream && state.localStream.getTracks().some((t) => t.readyState === 'live')) {
+  if (state.localStream && state.localStream.getTracks().some((track) => track.readyState === 'live')) {
     attachStream(localVideo, state.localStream);
     state.peerConnections.forEach((pc) => addLocalTracksToPeer(pc));
     return;
   }
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    showToast("Camera/micro indisponibles : ce site doit etre ouvert en HTTPS (ou localhost) pour y acceder.", 6000);
+    showToast(t('media.unavailableHttps'), 6000);
     return;
   }
   try {
     state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; }); // micro coupe par defaut
+    state.localStream.getAudioTracks().forEach((track) => { track.enabled = state.micOn; }); // micro coupe par defaut
     localVideo.muted = true; // obligatoire pour l'autoplay du flux local
     attachStream(localVideo, state.localStream);
 
@@ -555,7 +562,7 @@ async function initMedia() {
     // automatiquement et relance la negociation.
     state.peerConnections.forEach((pc) => addLocalTracksToPeer(pc));
   } catch (err) {
-    showToast(mediaErrorMessage(err, 'camera/micro'), 6000);
+    showToast(mediaErrorMessage(err, t('media.whatCameraMic')), 6000);
   }
 }
 
@@ -703,16 +710,16 @@ const toggleMicBtn = document.getElementById('toggle-mic-btn');
 // l'etat, le titre (info-bulle) precise l'action pour l'accessibilite.
 toggleCamBtn.addEventListener('click', () => {
   state.camOn = !state.camOn;
-  if (state.localStream) state.localStream.getVideoTracks().forEach((t) => { t.enabled = state.camOn; });
+  if (state.localStream) state.localStream.getVideoTracks().forEach((track) => { track.enabled = state.camOn; });
   toggleCamBtn.classList.toggle('off', !state.camOn);
-  toggleCamBtn.title = state.camOn ? 'Couper la camera' : 'Activer la camera';
+  toggleCamBtn.title = state.camOn ? t('camera.turnOffCam') : t('camera.turnOnCam');
 });
 
 toggleMicBtn.addEventListener('click', () => {
   state.micOn = !state.micOn;
-  if (state.localStream) state.localStream.getAudioTracks().forEach((t) => { t.enabled = state.micOn; });
+  if (state.localStream) state.localStream.getAudioTracks().forEach((track) => { track.enabled = state.micOn; });
   toggleMicBtn.classList.toggle('off', !state.micOn);
-  toggleMicBtn.title = state.micOn ? 'Couper le micro' : 'Activer le micro';
+  toggleMicBtn.title = state.micOn ? t('camera.turnOffMic') : t('camera.turnOnMic');
 });
 
 // ===================== Partage d'ecran (Netflix / Prime) =====================
@@ -728,7 +735,7 @@ function setShareButtonsState(sharing) {
 async function startScreenShare(platform) {
   if (state.screenStream) return;
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-    showToast("Partage d'ecran indisponible : ce navigateur ne le supporte pas (courant sur mobile), ou le site n'est pas en HTTPS.", 6000);
+    showToast(t('share.unavailable'), 6000);
     return;
   }
   try {
@@ -742,8 +749,8 @@ async function startScreenShare(platform) {
     });
   } catch (e) {
     showToast(e && e.name === 'NotAllowedError'
-      ? "Partage d'ecran annule."
-      : `Partage d'ecran impossible (${e && e.message ? e.message : 'erreur inconnue'}).`);
+      ? t('share.cancelled')
+      : t('share.failed', { msg: e && e.message ? e.message : t('errors.unknown') }));
     return;
   }
   setShareButtonsState(true);
@@ -827,7 +834,7 @@ function showScreenPreview(stream, { isRemote, platform }) {
     // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
     document.getElementById(`remote-request-${p}`).classList.toggle('hidden', !isRemote);
   });
-  if (isRemote) showToast("L'autre personne partage son ecran.");
+  if (isRemote) showToast(t('share.peerSharing'));
 }
 
 function clearScreenViewer() {
@@ -921,7 +928,7 @@ function startScreenStatsOverlay(pc, isRemote) {
 
 function stopScreenShare() {
   if (state.screenStream) {
-    state.screenStream.getTracks().forEach((t) => t.stop());
+    state.screenStream.getTracks().forEach((track) => track.stop());
     state.screenStream = null;
   }
   state.screenPeerConnections.forEach((pc) => pc.close());
@@ -938,7 +945,7 @@ socket.on('screen-share-stopped', () => {
   pc.clear();
   clearScreenViewer();
   unlockTabs();
-  showToast("Le partage d'ecran s'est arrete.");
+  showToast(t('share.stopped'));
 });
 
 document.querySelectorAll('.share-screen-btn').forEach((btn) => {
@@ -965,7 +972,7 @@ function exitCssFullscreen() {
   document.querySelectorAll('.screen-share-viewer.css-fullscreen').forEach((viewer) => {
     viewer.classList.remove('css-fullscreen');
     const btn = viewer.querySelector('.fullscreen-btn');
-    if (btn) { btn.textContent = '⛶'; btn.title = 'Plein ecran'; }
+    if (btn) { btn.textContent = '⛶'; btn.title = t('fullscreen.enter'); }
   });
   document.body.appendChild(cameraWidget);
   // On restaure la position choisie par glisser-depose (si aucune, la CSS
@@ -1030,7 +1037,7 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
     btn.textContent = '✕';
-    btn.title = 'Quitter le plein ecran';
+    btn.title = t('fullscreen.exit');
 
     // Volontairement PAS d'appel a l'API Fullscreen native (requestFullscreen)
     // ici, meme si elle est disponible : sur Chrome Android, l'element mis en
@@ -1190,3 +1197,24 @@ document.addEventListener('keydown', (e) => {
     }
   });
 })();
+
+// ===================== Changement de langue en cours de session =====================
+// applyStaticTranslations() (voir i18n.js) couvre tout le texte statique via
+// data-i18n-*, mais certains textes sont fixes dynamiquement par ce fichier
+// selon l'etat courant (camera/micro on/off, plein ecran actif, presence,
+// bouton "Rejoindre en tant que X") : ils ne seraient pas mis a jour sinon.
+document.addEventListener('watchtogether-languagechange', () => {
+  toggleCamBtn.title = state.camOn ? t('camera.turnOffCam') : t('camera.turnOnCam');
+  toggleMicBtn.title = state.micOn ? t('camera.turnOffMic') : t('camera.turnOnMic');
+
+  document.querySelectorAll('.screen-share-viewer').forEach((viewer) => {
+    const btn = viewer.querySelector('.fullscreen-btn');
+    if (btn) btn.title = viewer.classList.contains('css-fullscreen') ? t('fullscreen.exit') : t('fullscreen.enter');
+  });
+
+  if (lastPresenceUsers.length > 0) renderPresence(lastPresenceUsers);
+
+  if (params.get('room') && savedName) {
+    document.getElementById('join-room-btn').textContent = t('landing.joinAs', { name: savedName });
+  }
+});

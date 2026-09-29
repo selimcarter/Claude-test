@@ -11,20 +11,21 @@
 <!-- ===== Ecran d'accueil ===== -->
 <section id="landing" class="screen">
   <div class="landing-card">
+    <button type="button" id="lang-toggle-landing" class="lang-toggle-btn">اردو</button>
     <h1>Watch Together</h1>
-    <p class="subtitle">Regardez YouTube (synchronise automatiquement) ou Netflix / Prime Video (synchro manuelle) a distance, avec camera et chat.</p>
+    <p class="subtitle" data-i18n="landing.subtitle">Regardez YouTube (synchronise automatiquement) ou Netflix / Prime Video (synchro manuelle) a distance, avec camera et chat.</p>
 
-    <label for="name-input">Votre prenom</label>
-    <input id="name-input" type="text" placeholder="Ex: Selim" maxlength="30">
+    <label for="name-input" data-i18n="landing.nameLabel">Votre prenom</label>
+    <input id="name-input" type="text" data-i18n-placeholder="landing.namePlaceholder" placeholder="Ex: Selim" maxlength="30">
 
     <div class="landing-actions">
-      <button id="create-room-btn" class="primary">Creer un salon</button>
+      <button id="create-room-btn" class="primary" data-i18n="landing.createRoom">Creer un salon</button>
       <div class="join-row">
-        <input id="room-code-input" type="text" placeholder="Code du salon" maxlength="12">
-        <button id="join-room-btn">Rejoindre</button>
+        <input id="room-code-input" type="text" data-i18n-placeholder="landing.roomCodePlaceholder" placeholder="Code du salon" maxlength="12">
+        <button id="join-room-btn" data-i18n="landing.join">Rejoindre</button>
       </div>
     </div>
-    <p class="hint">Envoyez le lien du salon a la personne avec qui vous voulez regarder.</p>
+    <p class="hint" data-i18n="landing.hint">Envoyez le lien du salon a la personne avec qui vous voulez regarder.</p>
   </div>
 </section>
 
@@ -32,9 +33,9 @@
 <section id="app" class="screen hidden">
   <header class="topbar">
     <div class="room-info">
-      <span class="room-label">Salon</span>
+      <span class="room-label" data-i18n="topbar.roomLabel">Salon</span>
       <code id="room-code-display"></code>
-      <button id="copy-link-btn" title="Partager le lien d'invitation">Partager le lien</button>
+      <button id="copy-link-btn" data-i18n="topbar.shareLink" data-i18n-title="topbar.shareLinkTitle" title="Partager le lien d'invitation">Partager le lien</button>
     </div>
     <div class="tabs" id="platform-tabs">
       <button class="tab-btn active" data-platform="youtube">YouTube</button>
@@ -42,6 +43,7 @@
       <button class="tab-btn" data-platform="prime">Prime Video</button>
     </div>
     <div class="presence" id="presence-list"></div>
+    <button type="button" id="lang-toggle-app" class="lang-toggle-btn">اردو</button>
   </header>
 
   <main class="main-grid">
@@ -51,13 +53,13 @@
       <!-- Panneau YouTube -->
       <div id="panel-youtube" class="platform-panel active">
         <div class="yt-controls">
-          <input id="yt-url-input" type="text" placeholder="Collez une URL ou un ID YouTube...">
-          <button id="yt-load-btn">Charger</button>
+          <input id="yt-url-input" type="text" data-i18n-placeholder="yt.urlPlaceholder" placeholder="Collez une URL ou un ID YouTube...">
+          <button id="yt-load-btn" data-i18n="yt.load">Charger</button>
         </div>
         <div id="yt-player-wrap">
           <div id="yt-player"></div>
           <div id="yt-placeholder" class="placeholder">
-            <p>Collez un lien YouTube ci-dessus pour commencer.<br>La lecture, la pause et le deplacement dans la video seront synchronises automatiquement.</p>
+            <p data-i18n-html="yt.placeholderHtml">Collez un lien YouTube ci-dessus pour commencer.<br>La lecture, la pause et le deplacement dans la video seront synchronises automatiquement.</p>
           </div>
         </div>
       </div>
@@ -67,17 +69,17 @@
         <div class="screen-share-card">
           <div class="screen-share-viewer hidden" id="screen-viewer-netflix">
             <video id="screen-video-netflix" autoplay playsinline></video>
-            <button type="button" class="fullscreen-btn" data-platform="netflix" title="Plein ecran">⛶</button>
+            <button type="button" class="fullscreen-btn" data-platform="netflix" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
             <span class="screen-stats-overlay hidden" id="screen-stats-netflix"></span>
           </div>
           <div class="remote-request-controls hidden" id="remote-request-netflix">
-            <button type="button" class="request-pause-btn" data-platform="netflix">⏸ Demander une pause</button>
-            <button type="button" class="request-forward-btn" data-platform="netflix">⏩ Demander d'avancer</button>
+            <button type="button" class="request-pause-btn" data-platform="netflix" data-i18n="share.requestPause">⏸ Demander une pause</button>
+            <button type="button" class="request-forward-btn" data-platform="netflix" data-i18n="share.requestForward">⏩ Demander d'avancer</button>
           </div>
           <div class="screen-share-controls">
-            <button class="share-screen-btn" data-platform="netflix">Partager mon ecran (Netflix)</button>
-            <button class="stop-share-btn hidden" data-platform="netflix">Arreter le partage</button>
-            <p class="hint">Une seule personne (celle qui a Netflix) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Netflix.</p>
+            <button class="share-screen-btn" data-platform="netflix" data-i18n="share.shareScreenNetflix">Partager mon ecran (Netflix)</button>
+            <button class="stop-share-btn hidden" data-platform="netflix" data-i18n="share.stopShare">Arreter le partage</button>
+            <p class="hint" data-i18n="share.hintNetflix">Une seule personne (celle qui a Netflix) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Netflix.</p>
           </div>
         </div>
       </div>
@@ -87,17 +89,17 @@
         <div class="screen-share-card">
           <div class="screen-share-viewer hidden" id="screen-viewer-prime">
             <video id="screen-video-prime" autoplay playsinline></video>
-            <button type="button" class="fullscreen-btn" data-platform="prime" title="Plein ecran">⛶</button>
+            <button type="button" class="fullscreen-btn" data-platform="prime" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
             <span class="screen-stats-overlay hidden" id="screen-stats-prime"></span>
           </div>
           <div class="remote-request-controls hidden" id="remote-request-prime">
-            <button type="button" class="request-pause-btn" data-platform="prime">⏸ Demander une pause</button>
-            <button type="button" class="request-forward-btn" data-platform="prime">⏩ Demander d'avancer</button>
+            <button type="button" class="request-pause-btn" data-platform="prime" data-i18n="share.requestPause">⏸ Demander une pause</button>
+            <button type="button" class="request-forward-btn" data-platform="prime" data-i18n="share.requestForward">⏩ Demander d'avancer</button>
           </div>
           <div class="screen-share-controls">
-            <button class="share-screen-btn" data-platform="prime">Partager mon ecran (Prime Video)</button>
-            <button class="stop-share-btn hidden" data-platform="prime">Arreter le partage</button>
-            <p class="hint">Une seule personne (celle qui a Prime Video) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Prime.</p>
+            <button class="share-screen-btn" data-platform="prime" data-i18n="share.shareScreenPrime">Partager mon ecran (Prime Video)</button>
+            <button class="stop-share-btn hidden" data-platform="prime" data-i18n="share.stopShare">Arreter le partage</button>
+            <p class="hint" data-i18n="share.hintPrime">Une seule personne (celle qui a Prime Video) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Prime.</p>
           </div>
         </div>
       </div>
@@ -107,19 +109,19 @@
     <!-- Chat -->
     <aside class="chat-panel" id="chat-panel">
       <div class="chat-panel-header">
-        <span>Chat</span>
-        <button type="button" id="chat-close-btn" title="Replier le chat">✕</button>
+        <span data-i18n="chat.title">Chat</span>
+        <button type="button" id="chat-close-btn" data-i18n-title="chat.closeTitle" title="Replier le chat">✕</button>
       </div>
       <div class="chat-messages" id="chat-messages"></div>
       <form id="chat-form" class="chat-form">
-        <input id="chat-input" type="text" placeholder="Ecrire un message..." maxlength="2000" autocomplete="off">
-        <button type="submit">Envoyer</button>
+        <input id="chat-input" type="text" data-i18n-placeholder="chat.inputPlaceholder" placeholder="Ecrire un message..." maxlength="2000" autocomplete="off">
+        <button type="submit" data-i18n="chat.send">Envoyer</button>
       </form>
     </aside>
   </main>
 
   <!-- Bouton pour rouvrir le chat une fois replie -->
-  <button type="button" id="chat-toggle-btn" class="chat-toggle-btn hidden" title="Ouvrir le chat">💬</button>
+  <button type="button" id="chat-toggle-btn" class="chat-toggle-btn hidden" data-i18n-title="chat.openTitle" title="Ouvrir le chat">💬</button>
 
   <!-- Bulle camera deplacable -->
   <div id="camera-widget" class="camera-widget">
@@ -128,10 +130,10 @@
       <video id="remote-video" autoplay playsinline></video>
     </div>
     <div class="camera-buttons">
-      <button id="camera-shrink-btn" title="Reduire la bulle">−</button>
-      <button id="toggle-cam-btn" title="Activer/couper la camera">📷</button>
-      <button id="toggle-mic-btn" class="off" title="Activer/couper le micro">🎤</button>
-      <button id="camera-grow-btn" title="Agrandir la bulle">+</button>
+      <button id="camera-shrink-btn" data-i18n-title="camera.shrinkTitle" title="Reduire la bulle">−</button>
+      <button id="toggle-cam-btn" data-i18n-title="camera.toggleCamTitleGeneric" title="Activer/couper la camera">📷</button>
+      <button id="toggle-mic-btn" class="off" data-i18n-title="camera.toggleMicTitleGeneric" title="Activer/couper le micro">🎤</button>
+      <button id="camera-grow-btn" data-i18n-title="camera.growTitle" title="Agrandir la bulle">+</button>
     </div>
   </div>
 
