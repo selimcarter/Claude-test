@@ -750,7 +750,7 @@ async function startScreenShare(platform) {
 
   // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
   // sans repasser sur l'onglet Netflix/Prime d'origine.
-  showScreenPreview(state.screenStream, { isRemote: false });
+  showScreenPreview(state.screenStream, { isRemote: false, platform });
 
   // On verrouille les onglets (chez nous et chez l'autre) sur la plateforme
   // partagee, pour eviter qu'un changement d'onglet accidentel ne masque la
@@ -784,19 +784,32 @@ function limitVideoBitrate(sender, maxBitrate = 700000) {
 }
 
 // stream vient soit du pair (isRemote: true), soit de notre propre partage
-// (isRemote: false, apercu local). Meme <video> reutilise dans les deux cas
-// (on ne peut pas etre les deux a la fois dans un salon a 2 personnes).
-function showScreenPreview(stream, { isRemote }) {
-  ['netflix', 'prime'].forEach((platform) => {
-    const videoEl = document.getElementById(`screen-video-${platform}`);
+// (isRemote: false, apercu local).
+//
+// N'attache le flux qu'a l'element <video> de la plateforme REELLEMENT
+// partagee (platform, ou a defaut state.activeSharePlatform) plutot qu'aux
+// deux (netflix ET prime) comme avant : les onglets sont verrouilles sur la
+// plateforme partagee pendant toute la duree du partage (lockTabsToPlatform),
+// donc l'autre <video> n'est jamais visible - mais il continuait quand meme a
+// decoder le flux en arriere-plan pour rien (aucun navigateur ne garantit la
+// pause du decodage d'un <video> simplement cache par display:none). Decoder
+// le meme flux deux fois en parallele peut suffire a faire prendre du retard
+// a l'image sur un appareil mobile moins puissant, independamment du reseau
+// ou de l'audio - piste plausible pour le decalage signale sur Android qui
+// ne reagissait a aucun ajustement cote audio.
+function showScreenPreview(stream, { isRemote, platform }) {
+  const activePlatform = platform || state.activeSharePlatform;
+  const platforms = activePlatform ? [activePlatform] : ['netflix', 'prime'];
+  platforms.forEach((p) => {
+    const videoEl = document.getElementById(`screen-video-${p}`);
     attachStream(videoEl, stream);
     // Notre propre apercu doit rester muet : le son original joue deja dans
     // l'onglet Netflix/Prime partage, sinon on l'entendrait en double (echo).
     videoEl.muted = !isRemote;
-    document.getElementById(`screen-viewer-${platform}`).classList.remove('hidden');
+    document.getElementById(`screen-viewer-${p}`).classList.remove('hidden');
     // Les boutons "demander pause/avancer" n'ont de sens que cote spectateur
     // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
-    document.getElementById(`remote-request-${platform}`).classList.toggle('hidden', !isRemote);
+    document.getElementById(`remote-request-${p}`).classList.toggle('hidden', !isRemote);
   });
   if (isRemote) showToast("L'autre personne partage son ecran.");
 }
