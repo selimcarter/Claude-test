@@ -722,10 +722,10 @@ toggleMicBtn.addEventListener('click', () => {
   toggleMicBtn.title = state.micOn ? t('camera.turnOffMic') : t('camera.turnOnMic');
 });
 
-// ===================== Partage d'ecran (Netflix / Prime) =====================
-// Une seule personne (celle qui a le compte Netflix/Prime) partage son ecran ;
-// l'autre le regarde en direct, sans rien installer et sans avoir son propre
-// compte. C'est un flux WebRTC separe de celui de la camera.
+// ===================== Partage d'ecran (Streaming) =====================
+// Une seule personne (celle qui a le compte Netflix/Prime/etc.) partage son
+// ecran ; l'autre le regarde en direct, sans rien installer et sans avoir son
+// propre compte. C'est un flux WebRTC separe de celui de la camera.
 
 function setShareButtonsState(sharing) {
   document.querySelectorAll('.share-screen-btn').forEach((b) => b.classList.toggle('hidden', sharing));
@@ -757,8 +757,8 @@ async function startScreenShare(platform) {
   state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
 
   // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
-  // sans repasser sur l'onglet Netflix/Prime d'origine.
-  showScreenPreview(state.screenStream, { isRemote: false, platform });
+  // sans repasser sur l'onglet d'origine (Netflix, Prime, etc.).
+  showScreenPreview(state.screenStream, { isRemote: false });
 
   // On verrouille les onglets (chez nous et chez l'autre) sur la plateforme
   // partagee, pour eviter qu'un changement d'onglet accidentel ne masque la
@@ -807,43 +807,26 @@ function limitVideoBitrate(sender, maxBitrate = 700000) {
 }
 
 // stream vient soit du pair (isRemote: true), soit de notre propre partage
-// (isRemote: false, apercu local).
-//
-// N'attache le flux qu'a l'element <video> de la plateforme REELLEMENT
-// partagee (platform, ou a defaut state.activeSharePlatform) plutot qu'aux
-// deux (netflix ET prime) comme avant : les onglets sont verrouilles sur la
-// plateforme partagee pendant toute la duree du partage (lockTabsToPlatform),
-// donc l'autre <video> n'est jamais visible - mais il continuait quand meme a
-// decoder le flux en arriere-plan pour rien (aucun navigateur ne garantit la
-// pause du decodage d'un <video> simplement cache par display:none). Decoder
-// le meme flux deux fois en parallele peut suffire a faire prendre du retard
-// a l'image sur un appareil mobile moins puissant, independamment du reseau
-// ou de l'audio - piste plausible pour le decalage signale sur Android qui
-// ne reagissait a aucun ajustement cote audio.
-function showScreenPreview(stream, { isRemote, platform }) {
-  const activePlatform = platform || state.activeSharePlatform;
-  const platforms = activePlatform ? [activePlatform] : ['netflix', 'prime'];
-  platforms.forEach((p) => {
-    const videoEl = document.getElementById(`screen-video-${p}`);
-    attachStream(videoEl, stream);
-    // Notre propre apercu doit rester muet : le son original joue deja dans
-    // l'onglet Netflix/Prime partage, sinon on l'entendrait en double (echo).
-    videoEl.muted = !isRemote;
-    document.getElementById(`screen-viewer-${p}`).classList.remove('hidden');
-    // Les boutons "demander pause/avancer" n'ont de sens que cote spectateur
-    // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
-    document.getElementById(`remote-request-${p}`).classList.toggle('hidden', !isRemote);
-  });
+// (isRemote: false, apercu local). Une seule plateforme de partage existe
+// ("streaming", generique a Netflix/Prime/etc.), donc un seul <video>.
+function showScreenPreview(stream, { isRemote }) {
+  const videoEl = document.getElementById('screen-video-streaming');
+  attachStream(videoEl, stream);
+  // Notre propre apercu doit rester muet : le son original joue deja dans
+  // l'onglet partage, sinon on l'entendrait en double (echo).
+  videoEl.muted = !isRemote;
+  document.getElementById('screen-viewer-streaming').classList.remove('hidden');
+  // Les boutons "demander pause/avancer" n'ont de sens que cote spectateur
+  // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
+  document.getElementById('remote-request-streaming').classList.toggle('hidden', !isRemote);
   if (isRemote) showToast(t('share.peerSharing'));
 }
 
 function clearScreenViewer() {
   stopScreenStatsOverlay();
-  ['netflix', 'prime'].forEach((platform) => {
-    clearVideoElement(document.getElementById(`screen-video-${platform}`));
-    document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
-    document.getElementById(`remote-request-${platform}`).classList.add('hidden');
-  });
+  clearVideoElement(document.getElementById('screen-video-streaming'));
+  document.getElementById('screen-viewer-streaming').classList.add('hidden');
+  document.getElementById('remote-request-streaming').classList.add('hidden');
 }
 
 // Indicateur discret (resolution reelle / debit reel / codec / relais TURN
@@ -858,10 +841,8 @@ function stopScreenStatsOverlay() {
   clearInterval(screenStatsTimer);
   screenStatsTimer = null;
   screenStatsPrevSample = null;
-  ['netflix', 'prime'].forEach((platform) => {
-    const el = document.getElementById(`screen-stats-${platform}`);
-    if (el) el.classList.add('hidden');
-  });
+  const el = document.getElementById('screen-stats-streaming');
+  if (el) el.classList.add('hidden');
 }
 
 function startScreenStatsOverlay(pc, isRemote) {
@@ -916,10 +897,8 @@ function startScreenStatsOverlay(pc, isRemote) {
     const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
     const text = [res, bitrateText, codecName.toUpperCase(), relay, limitReason].filter(Boolean).join(' · ');
 
-    ['netflix', 'prime'].forEach((platform) => {
-      const el = document.getElementById(`screen-stats-${platform}`);
-      if (el) { el.textContent = text; el.classList.remove('hidden'); }
-    });
+    const el = document.getElementById('screen-stats-streaming');
+    if (el) { el.textContent = text; el.classList.remove('hidden'); }
   };
 
   update();

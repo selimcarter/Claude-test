@@ -13,7 +13,7 @@
   <div class="landing-card">
     <button type="button" id="lang-toggle-landing" class="lang-toggle-btn">اردو</button>
     <h1>Watch Together</h1>
-    <p class="subtitle" data-i18n="landing.subtitle">Regardez YouTube (synchronise automatiquement) ou Netflix / Prime Video (synchro manuelle) a distance, avec camera et chat.</p>
+    <p class="subtitle" data-i18n="landing.subtitle">Regardez YouTube (synchronise automatiquement) ou une plateforme de streaming comme Netflix / Prime Video (synchro manuelle via partage d'ecran) a distance, avec camera et chat.</p>
 
     <label for="name-input" data-i18n="landing.nameLabel">Votre prenom</label>
     <input id="name-input" type="text" data-i18n-placeholder="landing.namePlaceholder" placeholder="Ex: Selim" maxlength="30">
@@ -39,8 +39,7 @@
     </div>
     <div class="tabs" id="platform-tabs">
       <button class="tab-btn active" data-platform="youtube">YouTube</button>
-      <button class="tab-btn" data-platform="netflix">Netflix</button>
-      <button class="tab-btn" data-platform="prime">Prime Video</button>
+      <button class="tab-btn" data-platform="streaming" data-i18n="tabs.streaming">Streaming</button>
     </div>
     <div class="presence" id="presence-list"></div>
     <button type="button" id="lang-toggle-app" class="lang-toggle-btn">اردو</button>
@@ -64,42 +63,22 @@
         </div>
       </div>
 
-      <!-- Panneau Netflix -->
-      <div id="panel-netflix" class="platform-panel">
+      <!-- Panneau Streaming (partage d'ecran generique : Netflix, Prime Video, ou tout autre site/appli video) -->
+      <div id="panel-streaming" class="platform-panel">
         <div class="screen-share-card">
-          <div class="screen-share-viewer hidden" id="screen-viewer-netflix">
-            <video id="screen-video-netflix" autoplay playsinline></video>
-            <button type="button" class="fullscreen-btn" data-platform="netflix" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
-            <span class="screen-stats-overlay hidden" id="screen-stats-netflix"></span>
+          <div class="screen-share-viewer hidden" id="screen-viewer-streaming">
+            <video id="screen-video-streaming" autoplay playsinline></video>
+            <button type="button" class="fullscreen-btn" data-platform="streaming" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
+            <span class="screen-stats-overlay hidden" id="screen-stats-streaming"></span>
           </div>
-          <div class="remote-request-controls hidden" id="remote-request-netflix">
-            <button type="button" class="request-pause-btn" data-platform="netflix" data-i18n="share.requestPause">⏸ Demander une pause</button>
-            <button type="button" class="request-forward-btn" data-platform="netflix" data-i18n="share.requestForward">⏩ Demander d'avancer</button>
+          <div class="remote-request-controls hidden" id="remote-request-streaming">
+            <button type="button" class="request-pause-btn" data-platform="streaming" data-i18n="share.requestPause">⏸ Demander une pause</button>
+            <button type="button" class="request-forward-btn" data-platform="streaming" data-i18n="share.requestForward">⏩ Demander d'avancer</button>
           </div>
           <div class="screen-share-controls">
-            <button class="share-screen-btn" data-platform="netflix" data-i18n="share.shareScreenNetflix">Partager mon ecran (Netflix)</button>
-            <button class="stop-share-btn hidden" data-platform="netflix" data-i18n="share.stopShare">Arreter le partage</button>
-            <p class="hint" data-i18n="share.hintNetflix">Une seule personne (celle qui a Netflix) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Netflix.</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Panneau Prime Video -->
-      <div id="panel-prime" class="platform-panel">
-        <div class="screen-share-card">
-          <div class="screen-share-viewer hidden" id="screen-viewer-prime">
-            <video id="screen-video-prime" autoplay playsinline></video>
-            <button type="button" class="fullscreen-btn" data-platform="prime" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
-            <span class="screen-stats-overlay hidden" id="screen-stats-prime"></span>
-          </div>
-          <div class="remote-request-controls hidden" id="remote-request-prime">
-            <button type="button" class="request-pause-btn" data-platform="prime" data-i18n="share.requestPause">⏸ Demander une pause</button>
-            <button type="button" class="request-forward-btn" data-platform="prime" data-i18n="share.requestForward">⏩ Demander d'avancer</button>
-          </div>
-          <div class="screen-share-controls">
-            <button class="share-screen-btn" data-platform="prime" data-i18n="share.shareScreenPrime">Partager mon ecran (Prime Video)</button>
-            <button class="stop-share-btn hidden" data-platform="prime" data-i18n="share.stopShare">Arreter le partage</button>
-            <p class="hint" data-i18n="share.hintPrime">Une seule personne (celle qui a Prime Video) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Prime.</p>
+            <button class="share-screen-btn" data-platform="streaming" data-i18n="share.shareScreen">Partager mon ecran</button>
+            <button class="stop-share-btn hidden" data-platform="streaming" data-i18n="share.stopShare">Arreter le partage</button>
+            <p class="hint" data-i18n="share.hintStreaming">Une seule personne clique ici (Netflix, Prime Video, ou n'importe quel autre site) : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte.</p>
           </div>
         </div>
       </div>

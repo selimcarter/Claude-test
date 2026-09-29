@@ -10,7 +10,7 @@
 
 const TRANSLATIONS = {
   fr: {
-    'landing.subtitle': "Regardez YouTube (synchronise automatiquement) ou Netflix / Prime Video (synchro manuelle) a distance, avec camera et chat.",
+    'landing.subtitle': "Regardez YouTube (synchronise automatiquement) ou une plateforme de streaming comme Netflix / Prime Video (synchro manuelle via partage d'ecran) a distance, avec camera et chat.",
     'landing.nameLabel': 'Votre prenom',
     'landing.namePlaceholder': 'Ex: Selim',
     'landing.createRoom': 'Creer un salon',
@@ -28,16 +28,16 @@ const TRANSLATIONS = {
     'yt.placeholderHtml': "Collez un lien YouTube ci-dessus pour commencer.<br>La lecture, la pause et le deplacement dans la video seront synchronises automatiquement.",
     'yt.invalidUrl': 'URL ou ID YouTube invalide.',
 
+    'tabs.streaming': 'Streaming',
+
     'fullscreen.enter': 'Plein ecran',
     'fullscreen.exit': 'Quitter le plein ecran',
 
     'share.requestPause': '⏸ Demander une pause',
     'share.requestForward': "⏩ Demander d'avancer",
-    'share.shareScreenNetflix': 'Partager mon ecran (Netflix)',
-    'share.shareScreenPrime': 'Partager mon ecran (Prime Video)',
+    'share.shareScreen': 'Partager mon ecran',
     'share.stopShare': 'Arreter le partage',
-    'share.hintNetflix': "Une seule personne (celle qui a Netflix) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Netflix.",
-    'share.hintPrime': "Une seule personne (celle qui a Prime Video) clique ici : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte Prime.",
+    'share.hintStreaming': "Une seule personne clique ici (Netflix, Prime Video, ou n'importe quel autre site) : son ecran est diffuse en direct a l'autre personne, qui n'a rien a installer ni son propre compte.",
     'share.cantSwitchTab': "Impossible de changer d'onglet pendant un partage d'ecran. Arretez d'abord le partage.",
     'share.unavailable': "Partage d'ecran indisponible : ce navigateur ne le supporte pas (courant sur mobile), ou le site n'est pas en HTTPS.",
     'share.cancelled': "Partage d'ecran annule.",
@@ -87,7 +87,7 @@ const TRANSLATIONS = {
     'video.playOverlay': '▶ Cliquer pour activer la video',
   },
   ur: {
-    'landing.subtitle': 'YouTube dekhein (khud-kar sync) ya Netflix / Prime Video (manual sync) door se, camera aur chat ke saath.',
+    'landing.subtitle': 'YouTube dekhein (khud-kar sync) ya kisi streaming platform jaise Netflix / Prime Video (screen share ke zariye manual sync) door se, camera aur chat ke saath.',
     'landing.nameLabel': 'Aap ka naam',
     'landing.namePlaceholder': 'Misaal: Selim',
     'landing.createRoom': 'Room banayein',
@@ -105,16 +105,16 @@ const TRANSLATIONS = {
     'yt.placeholderHtml': 'Shuru karne ke liye upar YouTube link paste karein.<br>Play, pause aur video mein aage-peeche karna khud-kar sync ho jayega.',
     'yt.invalidUrl': 'YouTube URL ya ID sahi nahi hai.',
 
+    'tabs.streaming': 'Streaming',
+
     'fullscreen.enter': 'Full screen',
     'fullscreen.exit': 'Full screen se nikalein',
 
     'share.requestPause': '⏸ Pause maango',
     'share.requestForward': '⏩ Aage barhne ko kahein',
-    'share.shareScreenNetflix': 'Apni screen share karein (Netflix)',
-    'share.shareScreenPrime': 'Apni screen share karein (Prime Video)',
+    'share.shareScreen': 'Apni screen share karein',
     'share.stopShare': 'Sharing band karein',
-    'share.hintNetflix': 'Sirf ek insaan (jis ke paas Netflix hai) yahan click kare: uski screen doosre insaan ko live dikhegi, jise kuch install karne ya apna Netflix account rakhne ki zaroorat nahi.',
-    'share.hintPrime': 'Sirf ek insaan (jis ke paas Prime Video hai) yahan click kare: uski screen doosre insaan ko live dikhegi, jise kuch install karne ya apna Prime account rakhne ki zaroorat nahi.',
+    'share.hintStreaming': 'Sirf ek insaan yahan click kare (Netflix, Prime Video, ya koi bhi doosri site): uski screen doosre insaan ko live dikhegi, jise kuch install karne ya apna account rakhne ki zaroorat nahi.',
     'share.cantSwitchTab': 'Screen share ke dauran tab nahi badal sakte. Pehle sharing band karein.',
     'share.unavailable': 'Screen sharing available nahi hai: ya to yeh browser ise support nahi karta (mobile par aam baat hai), ya site HTTPS par nahi hai.',
     'share.cancelled': 'Screen sharing cancel kar di gayi.',
