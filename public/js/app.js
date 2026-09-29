@@ -681,6 +681,7 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
           if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
             event.receiver.playoutDelayHint = 0.25;
           }
+          if (event.track.kind === 'video') startScreenStatsOverlay(pc, true);
           showScreenPreview(event.streams[0], { isRemote: true });
         },
       });
@@ -768,7 +769,10 @@ function connectScreenToPeer(peerId) {
   state.screenPeerConnections.set(peerId, pc);
   state.screenStream.getTracks().forEach((track) => {
     const sender = pc.addTrack(track, state.screenStream);
-    if (track.kind === 'video') limitVideoBitrate(sender);
+    if (track.kind === 'video') {
+      limitVideoBitrate(sender);
+      startScreenStatsOverlay(pc, false);
+    }
   });
   return pc;
 }
@@ -827,11 +831,92 @@ function showScreenPreview(stream, { isRemote, platform }) {
 }
 
 function clearScreenViewer() {
+  stopScreenStatsOverlay();
   ['netflix', 'prime'].forEach((platform) => {
     clearVideoElement(document.getElementById(`screen-video-${platform}`));
     document.getElementById(`screen-viewer-${platform}`).classList.add('hidden');
     document.getElementById(`remote-request-${platform}`).classList.add('hidden');
   });
+}
+
+// Indicateur discret (resolution reelle / debit reel / codec / relais TURN
+// ou direct / raison de degradation) affiche pendant un partage d'ecran,
+// cote partageur (ce qu'il envoie reellement, isRemote:false) comme cote
+// spectateur (ce qu'il recoit reellement, isRemote:true) : permet de
+// verifier objectivement l'effet d'un reglage plutot que de deviner.
+let screenStatsTimer = null;
+let screenStatsPrevSample = null;
+
+function stopScreenStatsOverlay() {
+  clearInterval(screenStatsTimer);
+  screenStatsTimer = null;
+  screenStatsPrevSample = null;
+  ['netflix', 'prime'].forEach((platform) => {
+    const el = document.getElementById(`screen-stats-${platform}`);
+    if (el) el.classList.add('hidden');
+  });
+}
+
+function startScreenStatsOverlay(pc, isRemote) {
+  stopScreenStatsOverlay();
+  const rtpType = isRemote ? 'inbound-rtp' : 'outbound-rtp';
+
+  const update = async () => {
+    let report;
+    try {
+      report = await pc.getStats();
+    } catch (e) {
+      return;
+    }
+
+    let rtp = null;
+    let candidatePairId = null;
+    report.forEach((stat) => {
+      if (stat.type === rtpType && stat.kind === 'video') rtp = stat;
+      if (stat.type === 'transport' && stat.selectedCandidatePairId) candidatePairId = stat.selectedCandidatePairId;
+    });
+    if (!rtp) return;
+
+    let codecName = '';
+    if (rtp.codecId && report.get(rtp.codecId)) {
+      codecName = (report.get(rtp.codecId).mimeType || '').split('/')[1] || '';
+    }
+
+    let relay = '';
+    const pair = candidatePairId && report.get(candidatePairId);
+    const localCandidate = pair && pair.localCandidateId && report.get(pair.localCandidateId);
+    if (localCandidate) relay = localCandidate.candidateType === 'relay' ? 'relais TURN' : 'direct';
+
+    const bytes = isRemote ? rtp.bytesReceived : rtp.bytesSent;
+    let bitrateText = '...';
+    const now = Date.now();
+    if (typeof bytes === 'number' && screenStatsPrevSample) {
+      const dtSeconds = (now - screenStatsPrevSample.ts) / 1000;
+      if (dtSeconds > 0) {
+        const kbps = Math.max(0, Math.round(((bytes - screenStatsPrevSample.bytes) * 8) / dtSeconds / 1000));
+        bitrateText = kbps < 1000 ? `${kbps}kbps` : `${(kbps / 1000).toFixed(1)}Mbps`;
+      }
+    }
+    screenStatsPrevSample = { bytes, ts: now };
+
+    // Champ standard qui dit EXPLICITEMENT pourquoi l'encodeur degrade la
+    // qualite ('cpu', 'bandwidth', 'other', ou absent/'none' si rien ne le
+    // limite) - evite de deviner entre CPU et reseau.
+    const limitReason = !isRemote && rtp.qualityLimitationReason && rtp.qualityLimitationReason !== 'none'
+      ? `limite:${rtp.qualityLimitationReason}`
+      : '';
+
+    const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
+    const text = [res, bitrateText, codecName.toUpperCase(), relay, limitReason].filter(Boolean).join(' · ');
+
+    ['netflix', 'prime'].forEach((platform) => {
+      const el = document.getElementById(`screen-stats-${platform}`);
+      if (el) { el.textContent = text; el.classList.remove('hidden'); }
+    });
+  };
+
+  update();
+  screenStatsTimer = setInterval(update, 2000);
 }
 
 function stopScreenShare() {
