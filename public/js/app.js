@@ -671,17 +671,15 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
           // Compense le delai typiquement plus eleve de la capture audio
           // d'onglet/systeme cote partageur (particularite connue de
           // getDisplayMedia sur Chrome desktop, plus lente que la capture
-          // video) : sans ca, le son recu peut arriver en avance sur l'image.
-          // On retarde volontairement sa restitution pour les realigner,
-          // plutot qu'un offset fixe code en dur pour un seul cas observe.
-          // Valeur relevee de 0.25s a 1s puis 2s : 1s rapporte comme encore
-          // insuffisant sur Android (decalage de "quelques secondes" selon
-          // retour utilisateur, confirme par une video). Si 2s ne suffit pas
-          // non plus, ce n'est probablement plus un simple delai de capture a
-          // compenser mais un signe qu'il faut chercher une autre cause
-          // (accumulation de retard plutot qu'un ecart fixe).
+          // video) : sans ca, le son recu peut arriver legerement en avance
+          // sur l'image. Teste jusqu'a 2s sur Android sans AUCUN changement
+          // perceptible (0.25/1/2s identiques) : ce reglage semble plafonne/
+          // sans effet reel sur ce navigateur, ce n'est donc pas le bon
+          // levier pour le decalage de plusieurs secondes observe la-bas -
+          // remis a sa valeur d'origine, modeste et raisonnee, plutot que de
+          // continuer a monter un chiffre qui ne change rien.
           if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
-            event.receiver.playoutDelayHint = 2.0;
+            event.receiver.playoutDelayHint = 0.25;
           }
           showScreenPreview(event.streams[0], { isRemote: true });
         },
