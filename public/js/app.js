@@ -674,8 +674,11 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
           // video) : sans ca, le son recu peut arriver en avance sur l'image.
           // On retarde volontairement sa restitution pour les realigner,
           // plutot qu'un offset fixe code en dur pour un seul cas observe.
+          // Valeur relevee de 0.25s a 1s : rapporte comme insuffisant sur
+          // Android (decalage encore visible, de l'ordre de "quelques
+          // secondes" selon retour utilisateur).
           if (event.track.kind === 'audio' && 'playoutDelayHint' in event.receiver) {
-            event.receiver.playoutDelayHint = 0.25;
+            event.receiver.playoutDelayHint = 1.0;
           }
           showScreenPreview(event.streams[0], { isRemote: true });
         },
