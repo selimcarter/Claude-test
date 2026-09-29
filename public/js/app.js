@@ -776,10 +776,22 @@ function connectScreenToPeer(peerId) {
 // Plafonne le debit encode (independamment de la resolution demandee) : sur
 // un relais TURN a bande passante limitee, un debit trop eleve fait plus de
 // mal (paquets perdus, saccades) qu'une image un peu moins nette.
+//
+// degradationPreference='maintain-framerate' : sur une connexion dont le
+// debit reellement disponible est tres en dessous du plafond ci-dessus (ex:
+// longue distance, mesure a peine ~0.1 Mbps reel sur certains liens), sans ce
+// reglage l'encodeur peut continuer a viser une resolution trop elevee pour
+// ce qui passe reellement, ce qui fait s'accumuler un retard CROISSANT cote
+// video (l'image prend un retard qui grandit avec le temps) pendant que
+// l'audio, bien plus leger, reste lui a peu pres en temps reel - c'est le
+// decalage audio/video signale sur un lien longue distance/mobile contraint.
+// Ce reglage force plutot une baisse de resolution immediate et automatique
+// pour rester fluide et en temps reel, quitte a etre moins net.
 function limitVideoBitrate(sender, maxBitrate = 700000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
+  params.degradationPreference = 'maintain-framerate';
   sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
