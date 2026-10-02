@@ -17,9 +17,13 @@ Tu ne dois pas seulement produire du code qui fonctionne. Tu dois produire une e
 
 ## Contexte du projet
 
-- `extension/` : extension Chrome MV3 « Watch Together » (sync Netflix / Prime Video), en HTML + CSS + JavaScript sans build.
-- `server.js` + `public/` : site / serveur Node « Watch Together » associé.
-- Respecter cette stack existante (pas de framework, bundler ou TypeScript ajouté sans raison).
+- `video-downloader/` : extension Chrome MV3 de téléchargement de vidéos (YouTube, Instagram, TikTok et tout site supporté par yt-dlp).
+  - `video-downloader/extension/` : extension (HTML + CSS + JavaScript, sans build).
+  - `video-downloader/host/` : hôte natif Python (stdlib uniquement) qui pilote `yt-dlp` via Native Messaging.
+- `extension/`, `server.js`, `public/` : ancien projet « Watch Together », sans rapport — ne pas le modifier sauf demande explicite.
+- Respecter cette stack (pas de framework, bundler ou TypeScript ajouté sans raison).
+- Les téléchargeurs YouTube sont interdits sur le Chrome Web Store : l'extension est destinée à un usage personnel (chargement non empaqueté).
+- Ne jamais contourner de DRM (Netflix, Prime Video, Disney+…).
 
 ## 1. Règle fondamentale de travail
 

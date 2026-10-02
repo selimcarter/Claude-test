@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Video Downloader (yt-dlp)",
+  "version": "1.0.0",
+  "description": "Télécharge la vidéo de l'onglet actif (YouTube, Instagram, TikTok et de nombreux autres sites) via yt-dlp installé localement.",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwgweI1Nh+8cEp2kYLX6e4g/LelFppVgRF8pvulw+AcOh0EISM3ju1aKUfmtvOfWLSFFPZAnnNP/W8RURB1ijqyLbfeDZJVxPgy5gUoYcPXbL3B3vobyV9hDyxZSUQlVLjEB+gcxn3VF/v6hFIr4YNHVUbusrNpIQ1Qtaz6oXpSqs59qR0taDQgZUM6apNVuiKVTW14perDDhBYW+UGZdjGkzxOBM4Xgm4UxFDyQdviVFxMguf1kuZjZu0JiBOMurEJtCbqijdmKxcMUWMFM9XNNvAjrvt6cfZ4wZCwJaTjBBNKO9fmPXqocS+hwPdAKawNPexI0xGaSHwW9gBC3bVQIDAQAB",
+  "permissions": ["nativeMessaging", "activeTab", "storage", "contextMenus", "notifications"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Télécharger la vidéo",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

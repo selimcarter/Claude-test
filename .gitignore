@@ -1,3 +1,5 @@
 node_modules/
 npm-debug.log*
 .DS_Store
+video-downloader/host/config.json
+__pycache__/

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Video Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Video Downloader</h1>
+    <p id="host-status" class="status" role="status">Vérification de l'hôte…</p>
+  </header>
+
+  <section class="card">
+    <p id="page-url" class="url" title=""></p>
+    <div class="options">
+      <label>Type
+        <select id="mode">
+          <option value="video">Vidéo (MP4)</option>
+          <option value="audio">Audio (MP3)</option>
+        </select>
+      </label>
+      <label>Qualité
+        <select id="quality">
+          <option value="best">Meilleure</option>
+          <option value="1080">1080p max</option>
+          <option value="720">720p max</option>
+          <option value="480">480p max</option>
+          <option value="360">360p max</option>
+        </select>
+      </label>
+    </div>
+    <button id="download" type="button" disabled>Télécharger</button>
+    <p id="action-error" class="error" role="alert" hidden></p>
+  </section>
+
+  <section>
+    <div class="list-header">
+      <h2>Téléchargements</h2>
+      <button id="clear" type="button" class="link">Effacer terminés</button>
+    </div>
+    <ul id="jobs"></ul>
+    <p id="no-jobs" class="muted">Aucun téléchargement.</p>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
