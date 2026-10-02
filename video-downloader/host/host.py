@@ -9,8 +9,11 @@ Uniquement la bibliotheque standard : seul yt-dlp (et idealement ffmpeg)
 doivent etre installes a part.
 """
 
+import importlib
 import json
+import math
 import os
+import re
 import shutil
 import signal
 import struct
@@ -26,12 +29,30 @@ CONFIG_PATH = HOST_DIR / "config.json"
 IS_WINDOWS = os.name == "nt"
 MAX_URL_LENGTH = 2048
 PROGRESS_INTERVAL_SECONDS = 0.5
+UPDATE_TIMEOUT_SECONDS = 300
+FOLDER_PICKER_TIMEOUT_SECONDS = 600
 QUALITIES = {"best", "1080", "720", "480", "360"}
 MODES = {"video", "audio"}
+COOKIE_BROWSERS = {"firefox", "chrome", "edge", "brave", "opera", "vivaldi", "chromium", "safari"}
+SUBTITLE_LANGS_PATTERN = re.compile(r"^[A-Za-z0-9*.\-_]+(,[A-Za-z0-9*.\-_]+)*$")
+MAX_PLAYLIST_ITEMS = 500
 
 write_lock = threading.Lock()
 jobs_lock = threading.Lock()
-jobs = {}  # id -> {"process": Popen, "filepath": str | None, "cancelled": bool}
+jobs = {}  # id -> {"process": Popen, "files": [str], "cancelled": bool}
+
+# Selecteur de dossier natif, lance dans un processus a part : Tk doit tourner
+# dans le thread principal (obligatoire sur macOS) et ne doit pas bloquer
+# la lecture des messages de Chrome.
+FOLDER_PICKER_SCRIPT = """
+import sys, tkinter
+from tkinter import filedialog
+root = tkinter.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+path = filedialog.askdirectory(title="Dossier de telechargement", initialdir=sys.argv[1], mustexist=False)
+sys.stdout.write(path or "")
+"""
 
 
 # --- Protocole Native Messaging ------------------------------------------
@@ -76,14 +97,25 @@ def load_config():
         return {}
 
 
-def get_download_dir(config):
+def default_download_dir(config):
     configured = config.get("download_dir")
-    directory = Path(configured).expanduser() if configured else Path.home() / "Downloads" / "VideoDownloader"
+    return Path(configured).expanduser() if configured else Path.home() / "Downloads" / "VideoDownloader"
+
+
+def resolve_download_dir(requested, config):
+    """Dossier choisi dans les reglages de l'extension, sinon config.json / defaut."""
+    if isinstance(requested, str) and requested.strip():
+        directory = Path(requested.strip()).expanduser()
+        if not directory.is_absolute():
+            raise ValueError("Le dossier de téléchargement doit être un chemin complet.")
+    else:
+        directory = default_download_dir(config)
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def find_yt_dlp_command():
+    importlib.invalidate_caches()  # yt-dlp a pu etre installe depuis le lancement
     if find_spec("yt_dlp") is not None:
         return [sys.executable, "-m", "yt_dlp"]
     executable = shutil.which("yt-dlp")
@@ -92,6 +124,10 @@ def find_yt_dlp_command():
 
 def has_ffmpeg():
     return shutil.which("ffmpeg") is not None
+
+
+def has_deno():
+    return shutil.which("deno") is not None
 
 
 def subprocess_options():
@@ -111,12 +147,69 @@ def get_yt_dlp_version(command):
         return None
 
 
-# --- Telechargements -------------------------------------------------------
+# --- Validation des requetes -------------------------------------------------
 
 def is_valid_url(url):
     return (isinstance(url, str) and len(url) <= MAX_URL_LENGTH
             and url.startswith(("http://", "https://")) and not any(c.isspace() for c in url))
 
+
+def parse_clip(clip):
+    """Retourne (debut, fin) en secondes, fin=None pour "jusqu'a la fin", ou None."""
+    if clip is None:
+        return None
+    if not isinstance(clip, dict):
+        raise ValueError("Extrait invalide.")
+    start, end = clip.get("start"), clip.get("end")
+    for value in (start, end):
+        if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool)
+                                  or not math.isfinite(value) or value < 0):
+            raise ValueError("Extrait invalide.")
+    start = start or 0
+    if end is not None and end <= start:
+        raise ValueError("La fin de l'extrait doit être après le début.")
+    if start == 0 and end is None:
+        return None
+    return start, end
+
+
+def format_seconds(value):
+    return f"{value:g}"
+
+
+def build_download_options(message):
+    """Valide le message DOWNLOAD et retourne les options normalisees."""
+    url, mode, quality = message.get("url"), message.get("mode"), message.get("quality")
+    if not is_valid_url(url) or mode not in MODES or quality not in QUALITIES:
+        raise ValueError("Requête invalide.")
+
+    playlist_limit = message.get("playlistLimit", 50)
+    if not isinstance(playlist_limit, int) or not 1 <= playlist_limit <= MAX_PLAYLIST_ITEMS:
+        raise ValueError("Limite de playlist invalide.")
+
+    cookies = message.get("cookiesFromBrowser") or None
+    if cookies is not None and cookies not in COOKIE_BROWSERS:
+        raise ValueError("Navigateur de connexion invalide.")
+
+    subtitle_langs = message.get("subtitleLangs") or ""
+    if message.get("subtitles") and not SUBTITLE_LANGS_PATTERN.match(subtitle_langs):
+        raise ValueError("Langues de sous-titres invalides (exemple : fr,en).")
+
+    return {
+        "url": url,
+        "mode": mode,
+        "quality": quality,
+        "playlist": bool(message.get("playlist")),
+        "playlist_limit": playlist_limit,
+        "clip": parse_clip(message.get("clip")),
+        "cookies": cookies,
+        "subtitles": bool(message.get("subtitles")) and mode == "video",
+        "subtitle_langs": subtitle_langs,
+        "thumbnail": bool(message.get("thumbnail")),
+    }
+
+
+# --- Construction de la commande yt-dlp -------------------------------------
 
 def build_format_args(mode, quality, ffmpeg_available):
     if mode == "audio":
@@ -132,32 +225,74 @@ def build_format_args(mode, quality, ffmpeg_available):
     return ["-f", "b"] + sort_args
 
 
-def build_command(base_command, url, mode, quality, config, download_dir):
+def build_output_template(options):
+    name = "%(title).150B [%(id)s]"
+    if options["clip"]:
+        start, end = options["clip"]
+        name += f" (extrait {format_seconds(start)}-{format_seconds(end) if end is not None else 'fin'}s)"
+    # Suffixe distinct pour l'audio : sinon la conversion MP3 supprimerait
+    # la video du meme nom deja telechargee.
+    if options["mode"] == "audio":
+        name += " (audio)"
+    if options["playlist"]:
+        return "%(playlist_title|Playlist).100B/%(playlist_index|0)03d - " + name + ".%(ext)s"
+    return name + ".%(ext)s"
+
+
+def build_command(base_command, options, download_dir, ffmpeg_available):
     command = base_command + [
-        "--no-playlist",
         "--newline",
         "--progress",
         "--no-mtime",
         "--windows-filenames",
         "--encoding", "utf-8",
         "-P", str(download_dir),
-        # Suffixe distinct pour l'audio : sinon la conversion MP3 supprimerait
-        # la video du meme nom deja telechargee.
-        "-o", "%(title).150B [%(id)s]" + (" (audio)" if mode == "audio" else "") + ".%(ext)s",
-        "--progress-template", "download:PROGRESS %(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s",
+        "-o", build_output_template(options),
+        "--progress-template",
+        "download:PROGRESS %(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s"
+        "|%(info.playlist_index)s|%(info.n_entries)s",
         "--print", "before_dl:TITLE %(title)s",
         "--print", "after_move:FILE %(filepath)s",
     ]
-    command += build_format_args(mode, quality, has_ffmpeg())
-    if config.get("cookies_from_browser"):
-        command += ["--cookies-from-browser", str(config["cookies_from_browser"])]
-    # "--" empeche une URL commencant par "-" d'etre interpretee comme option.
-    return command + ["--", url]
 
+    if options["playlist"]:
+        command += ["--yes-playlist", "-I", f"1:{options['playlist_limit']}", "--ignore-errors",
+                    "--print", "before_dl:PLAYLIST %(playlist_title)s"]
+    else:
+        command += ["--no-playlist"]
+
+    command += build_format_args(options["mode"], options["quality"], ffmpeg_available)
+
+    if options["clip"]:
+        start, end = options["clip"]
+        end_text = format_seconds(end) if end is not None else "inf"
+        command += ["--download-sections", f"*{format_seconds(start)}-{end_text}", "--force-keyframes-at-cuts"]
+
+    if options["subtitles"] and ffmpeg_available:
+        command += ["--write-subs", "--write-auto-subs", "--sub-langs", options["subtitle_langs"], "--embed-subs"]
+
+    if options["thumbnail"] and ffmpeg_available:
+        command += ["--embed-thumbnail", "--embed-metadata"]
+
+    if options["cookies"]:
+        command += ["--cookies-from-browser", options["cookies"]]
+
+    # "--" empeche une URL commencant par "-" d'etre interpretee comme option.
+    return command + ["--", options["url"]]
+
+
+# --- Telechargements -------------------------------------------------------
 
 def parse_percent(text):
     try:
         return max(0.0, min(100.0, float(text.strip().rstrip("%"))))
+    except ValueError:
+        return None
+
+
+def parse_int(text):
+    try:
+        return int(text.strip())
     except ValueError:
         return None
 
@@ -167,10 +302,10 @@ def watch_stderr(process, error_lines):
         line = line.strip()
         if line:
             error_lines.append(line)
-            del error_lines[:-20]
+            del error_lines[:-50]
 
 
-def run_download(job_id, command):
+def run_download(job_id, command, is_playlist):
     try:
         env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -181,13 +316,14 @@ def run_download(job_id, command):
         return
 
     with jobs_lock:
-        jobs[job_id] = {"process": process, "filepath": None, "cancelled": False}
+        jobs[job_id] = {"process": process, "files": [], "cancelled": False}
 
     error_lines = []
     stderr_thread = threading.Thread(target=watch_stderr, args=(process, error_lines), daemon=True)
     stderr_thread.start()
 
     last_progress_sent = 0.0
+    playlist_title_sent = False
     for line in process.stdout:
         line = line.strip()
         if line.startswith("PROGRESS "):
@@ -195,15 +331,21 @@ def run_download(job_id, command):
             if now - last_progress_sent < PROGRESS_INTERVAL_SECONDS:
                 continue
             last_progress_sent = now
-            percent, speed, eta = (line[len("PROGRESS "):].split("|") + ["", "", ""])[:3]
+            percent, speed, eta, index, total = (line[len("PROGRESS "):].split("|") + [""] * 5)[:5]
             send_message({"type": "PROGRESS", "id": job_id, "percent": parse_percent(percent),
-                          "speed": speed.strip(), "eta": eta.strip()})
-        elif line.startswith("TITLE "):
+                          "speed": speed.strip(), "eta": eta.strip(),
+                          "item": parse_int(index) if is_playlist else None,
+                          "itemCount": parse_int(total) if is_playlist else None})
+        elif line.startswith("PLAYLIST ") and not playlist_title_sent:
+            playlist_title_sent = True
+            send_message({"type": "TITLE", "id": job_id, "title": line[len("PLAYLIST "):]})
+        elif line.startswith("TITLE ") and not is_playlist:
             send_message({"type": "TITLE", "id": job_id, "title": line[len("TITLE "):]})
         elif line.startswith("FILE "):
             with jobs_lock:
-                jobs[job_id]["filepath"] = line[len("FILE "):]
-            send_message({"type": "PROCESSING", "id": job_id})
+                jobs[job_id]["files"].append(line[len("FILE "):])
+            if not is_playlist:
+                send_message({"type": "PROCESSING", "id": job_id})
 
     return_code = process.wait()
     stderr_thread.join(timeout=5)
@@ -211,15 +353,18 @@ def run_download(job_id, command):
     with jobs_lock:
         job = jobs.get(job_id, {})
         cancelled = job.get("cancelled", False)
-        filepath = job.get("filepath")
+        files = list(job.get("files", []))
 
+    errors = [l for l in error_lines if l.startswith("ERROR")]
     if cancelled:
         send_message({"type": "CANCELLED", "id": job_id})
-    elif return_code == 0 and filepath:
-        send_message({"type": "DONE", "id": job_id, "filepath": filepath})
+    elif files and (return_code == 0 or is_playlist):
+        # En playlist, --ignore-errors continue apres un echec : succes partiel.
+        send_message({"type": "DONE", "id": job_id, "filepath": files[-1],
+                      "fileCount": len(files), "failedCount": len(errors)})
     else:
-        errors = [l for l in error_lines if l.startswith("ERROR")] or error_lines or ["Erreur inconnue"]
-        send_message({"type": "ERROR", "id": job_id, "message": errors[-1][:500]})
+        message = (errors or error_lines or ["Erreur inconnue"])[-1]
+        send_message({"type": "ERROR", "id": job_id, "message": message[:500]})
 
 
 def kill_process_tree(process):
@@ -249,35 +394,84 @@ def open_in_file_manager(path, select_file):
         subprocess.Popen(["xdg-open", str(path.parent if select_file else path)])
 
 
+# --- Maintenance -------------------------------------------------------------
+
+def update_yt_dlp(request_id):
+    if find_spec("yt_dlp") is not None:
+        command = [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"]
+    else:
+        executable = shutil.which("yt-dlp")
+        command = [executable, "-U"] if executable else None
+
+    if not command:
+        send_message({"type": "UPDATE_RESULT", "requestId": request_id, "ok": False,
+                      "output": "yt-dlp est introuvable."})
+        return
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=UPDATE_TIMEOUT_SECONDS, **subprocess_options())
+        output = (result.stdout + result.stderr).strip()
+        ok = result.returncode == 0
+    except (OSError, subprocess.SubprocessError) as error:
+        output, ok = str(error), False
+
+    base_command = find_yt_dlp_command()
+    send_message({"type": "UPDATE_RESULT", "requestId": request_id, "ok": ok,
+                  "version": get_yt_dlp_version(base_command) if base_command else None,
+                  "output": output[-1500:]})
+
+
+def pick_folder(request_id, initial_dir):
+    try:
+        result = subprocess.run([sys.executable, "-c", FOLDER_PICKER_SCRIPT, str(initial_dir)],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                timeout=FOLDER_PICKER_TIMEOUT_SECONDS)
+        if result.returncode != 0:
+            raise OSError(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "échec")
+        path = result.stdout.strip()
+        send_message({"type": "FOLDER_PICKED", "requestId": request_id, "ok": True,
+                      "path": str(Path(path)) if path else None})
+    except (OSError, subprocess.SubprocessError) as error:
+        send_message({"type": "FOLDER_PICKED", "requestId": request_id, "ok": False,
+                      "error": f"Sélecteur de dossier indisponible : {error}"})
+
+
 # --- Traitement des messages -----------------------------------------------
 
-def handle_message(message, base_command, config):
+def handle_message(message, config):
     message_type = message.get("type")
+    request_id = message.get("requestId")
 
     if message_type == "PING":
+        base_command = find_yt_dlp_command()
         send_message({
             "type": "PONG",
-            "requestId": message.get("requestId"),
+            "requestId": request_id,
             "ytDlpVersion": get_yt_dlp_version(base_command) if base_command else None,
             "ffmpeg": has_ffmpeg(),
-            "downloadDir": str(get_download_dir(config)),
+            "deno": has_deno(),
+            "defaultDownloadDir": str(default_download_dir(config)),
         })
 
     elif message_type == "DOWNLOAD":
         job_id = message.get("id")
-        url = message.get("url")
-        mode = message.get("mode")
-        quality = message.get("quality")
         if not isinstance(job_id, str) or not job_id:
             return
+        base_command = find_yt_dlp_command()
         if not base_command:
-            send_message({"type": "ERROR", "id": job_id, "message": "yt-dlp n'est pas installe."})
+            send_message({"type": "ERROR", "id": job_id, "message": "yt-dlp n'est pas installé."})
             return
-        if not is_valid_url(url) or mode not in MODES or quality not in QUALITIES:
-            send_message({"type": "ERROR", "id": job_id, "message": "Requete invalide."})
+        try:
+            options = build_download_options(message)
+            ffmpeg_available = has_ffmpeg()
+            if options["clip"] and not ffmpeg_available:
+                raise ValueError("ffmpeg est nécessaire pour télécharger un extrait.")
+            download_dir = resolve_download_dir(message.get("downloadDir"), config)
+        except (ValueError, OSError) as error:
+            send_message({"type": "ERROR", "id": job_id, "message": str(error)})
             return
-        command = build_command(base_command, url, mode, quality, config, get_download_dir(config))
-        threading.Thread(target=run_download, args=(job_id, command), daemon=True).start()
+        command = build_command(base_command, options, download_dir, ffmpeg_available)
+        threading.Thread(target=run_download, args=(job_id, command, options["playlist"]), daemon=True).start()
 
     elif message_type == "CANCEL":
         with jobs_lock:
@@ -288,24 +482,29 @@ def handle_message(message, base_command, config):
             kill_process_tree(job["process"])
 
     elif message_type == "OPEN_FOLDER":
-        # Le chemin vient de la memoire de l'hote, jamais de l'extension.
+        # Le chemin du fichier vient de la memoire de l'hote, jamais de l'extension.
         with jobs_lock:
-            filepath = jobs.get(message.get("id"), {}).get("filepath")
+            files = jobs.get(message.get("id"), {}).get("files") or []
         try:
-            if filepath and Path(filepath).exists():
-                open_in_file_manager(Path(filepath), select_file=True)
+            if files and Path(files[-1]).exists():
+                open_in_file_manager(Path(files[-1]), select_file=True)
             else:
-                open_in_file_manager(get_download_dir(config), select_file=False)
-        except OSError as error:
+                open_in_file_manager(resolve_download_dir(message.get("downloadDir"), config), select_file=False)
+        except (OSError, ValueError) as error:
             log(f"Impossible d'ouvrir le dossier : {error}")
+
+    elif message_type == "UPDATE_YTDLP":
+        threading.Thread(target=update_yt_dlp, args=(request_id,), daemon=True).start()
+
+    elif message_type == "PICK_FOLDER":
+        initial = message.get("initialDir")
+        initial_dir = Path(initial) if isinstance(initial, str) and Path(initial).is_dir() else Path.home()
+        threading.Thread(target=pick_folder, args=(request_id, initial_dir), daemon=True).start()
 
 
 def main():
     setup_binary_stdio()
     config = load_config()
-    base_command = find_yt_dlp_command()
-    if not base_command:
-        log("yt-dlp introuvable (ni module Python, ni executable dans le PATH).")
 
     while True:
         try:
@@ -316,7 +515,7 @@ def main():
         if message is None:
             break
         if isinstance(message, dict):
-            handle_message(message, base_command, config)
+            handle_message(message, config)
 
     # Chrome a ferme la connexion : on n'abandonne pas de processus orphelins.
     with jobs_lock:

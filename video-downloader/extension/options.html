@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Réglages · Video Downloader</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Video Downloader · Réglages</h1>
+      <p id="save-status" class="muted" role="status" aria-live="polite"></p>
+    </header>
+
+    <section>
+      <h2>État</h2>
+      <p id="host-status" class="muted">Vérification…</p>
+      <div class="row">
+        <button id="update-ytdlp" type="button">Mettre à jour yt-dlp</button>
+        <span id="update-status" class="muted" role="status"></span>
+      </div>
+      <pre id="update-output" hidden></pre>
+    </section>
+
+    <section>
+      <h2>Dossier de téléchargement</h2>
+      <div class="row">
+        <input id="download-dir" type="text" spellcheck="false" aria-label="Dossier de téléchargement">
+        <button id="pick-folder" type="button">Parcourir…</button>
+      </div>
+      <p class="hint">Laissez vide pour utiliser le dossier par défaut.</p>
+      <p id="folder-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section>
+      <h2>Fichiers</h2>
+      <label class="checkbox"><input id="thumbnail" type="checkbox"> Intégrer la miniature et les informations (titre, artiste…)</label>
+      <label class="checkbox"><input id="subtitles" type="checkbox"> Intégrer les sous-titres (vidéo uniquement)</label>
+      <label class="field">Langues des sous-titres
+        <input id="subtitle-langs" type="text" spellcheck="false" placeholder="fr,en">
+      </label>
+      <p class="hint">Codes séparés par des virgules, par exemple <code>fr,en</code>. ffmpeg est nécessaire pour la miniature et les sous-titres.</p>
+    </section>
+
+    <section>
+      <h2>Playlists</h2>
+      <label class="field">Nombre maximum de vidéos par playlist
+        <input id="playlist-limit" type="number" min="1" max="500" step="1">
+      </label>
+    </section>
+
+    <section>
+      <h2>Connexion (Instagram, contenus réservés)</h2>
+      <label class="field">Utiliser la session du navigateur
+        <select id="cookies-browser">
+          <option value="">Aucune</option>
+          <option value="firefox">Firefox (recommandé)</option>
+          <option value="chrome">Chrome</option>
+          <option value="edge">Edge</option>
+          <option value="brave">Brave</option>
+          <option value="opera">Opera</option>
+          <option value="vivaldi">Vivaldi</option>
+        </select>
+      </label>
+      <p class="hint">yt-dlp lit les cookies de ce navigateur pour accéder aux contenus qui demandent d'être connecté. Sous Windows, les cookies de Chrome/Edge sont souvent illisibles : connectez-vous à Instagram dans Firefox et choisissez Firefox.</p>
+    </section>
+
+    <section>
+      <h2>Bouton sur les pages</h2>
+      <label class="checkbox"><input id="show-page-button" type="checkbox"> Afficher le bouton « Télécharger » sur YouTube, TikTok et Instagram</label>
+    </section>
+
+    <section>
+      <h2>Raccourci clavier</h2>
+      <p>Raccourci actuel : <kbd id="shortcut">non défini</kbd></p>
+      <button id="edit-shortcut" type="button">Modifier le raccourci</button>
+    </section>
+  </main>
+  <script src="shared.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

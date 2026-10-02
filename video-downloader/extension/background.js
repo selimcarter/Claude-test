@@ -4,16 +4,19 @@
 // service worker. Tant que le port natif est ouvert, Chrome garde le service
 // worker actif, donc un telechargement en cours n'est pas interrompu.
 
+importScripts('shared.js');
+
 const HOST_NAME = 'com.videodownloader.host';
-const PING_TIMEOUT_MS = 10000;
+const HOST_TIMEOUTS_MS = { PING: 10000, UPDATE_YTDLP: 330000, PICK_FOLDER: 620000 };
 const MAX_FINISHED_JOBS = 20;
-const DEFAULT_PREFS = { mode: 'video', quality: 'best' };
 const MODES = ['video', 'audio'];
 const QUALITIES = ['best', '1080', '720', '480', '360'];
 const FINISHED_STATUSES = ['done', 'error', 'cancelled'];
+// Sites sur lesquels le content script affiche son bouton (voir manifest).
+const PAGE_BUTTON_HOSTS = /(^|\.)(youtube\.com|tiktok\.com|instagram\.com)$/;
 
 let nativePort = null;
-const pendingPings = new Map();
+const pendingRequests = new Map();
 
 // --- Etat des telechargements (cache memoire + miroir storage.session) -----
 
@@ -73,8 +76,8 @@ function getNativePort() {
     const reason = chrome.runtime.lastError?.message || 'Hôte natif déconnecté.';
     console.warn('Native host disconnected:', reason);
     nativePort = null;
-    for (const resolve of pendingPings.values()) resolve({ ok: false, error: reason });
-    pendingPings.clear();
+    for (const resolve of pendingRequests.values()) resolve({ ok: false, error: reason });
+    pendingRequests.clear();
     updateJobs((jobs) => {
       for (const job of Object.values(jobs)) {
         if (!FINISHED_STATUSES.includes(job.status)) {
@@ -91,40 +94,58 @@ function postToHost(message) {
   getNativePort().postMessage(message);
 }
 
-function pingHost() {
+// Requete/reponse avec l'hote, correlee par requestId.
+function requestHost(type, payload = {}) {
   return new Promise((resolve) => {
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => {
-      pendingPings.delete(requestId);
+      pendingRequests.delete(requestId);
       resolve({ ok: false, error: "L'hôte natif ne répond pas." });
-    }, PING_TIMEOUT_MS);
-    pendingPings.set(requestId, (result) => {
+    }, HOST_TIMEOUTS_MS[type]);
+    pendingRequests.set(requestId, (result) => {
       clearTimeout(timer);
       resolve(result);
     });
     try {
-      postToHost({ type: 'PING', requestId });
+      postToHost({ type, requestId, ...payload });
     } catch (error) {
-      pendingPings.delete(requestId);
+      pendingRequests.delete(requestId);
       clearTimeout(timer);
       resolve({ ok: false, error: error.message });
     }
   });
 }
 
+function resolveHostRequest(requestId, result) {
+  const resolve = pendingRequests.get(requestId);
+  pendingRequests.delete(requestId);
+  resolve?.(result);
+}
+
 function handleHostMessage(message) {
   switch (message?.type) {
-    case 'PONG': {
-      const resolve = pendingPings.get(message.requestId);
-      pendingPings.delete(message.requestId);
-      resolve?.({
+    case 'PONG':
+      resolveHostRequest(message.requestId, {
         ok: true,
         ytDlpVersion: message.ytDlpVersion,
         ffmpeg: message.ffmpeg,
-        downloadDir: message.downloadDir,
+        deno: message.deno,
+        defaultDownloadDir: message.defaultDownloadDir,
       });
       break;
-    }
+    case 'UPDATE_RESULT':
+      resolveHostRequest(message.requestId, {
+        ok: true,
+        updated: Boolean(message.ok),
+        version: message.version,
+        output: String(message.output || ''),
+      });
+      break;
+    case 'FOLDER_PICKED':
+      resolveHostRequest(message.requestId, message.ok
+        ? { ok: true, path: message.path || null }
+        : { ok: false, error: String(message.error || 'Erreur inconnue') });
+      break;
     case 'TITLE':
       updateJob(message.id, { title: String(message.title).slice(0, 300) });
       break;
@@ -134,13 +155,21 @@ function handleHostMessage(message) {
         percent: typeof message.percent === 'number' ? message.percent : null,
         speed: String(message.speed || ''),
         eta: String(message.eta || ''),
+        item: Number.isInteger(message.item) ? message.item : null,
+        itemCount: Number.isInteger(message.itemCount) ? message.itemCount : null,
       });
       break;
     case 'PROCESSING':
       updateJob(message.id, { status: 'processing', percent: 100 });
       break;
     case 'DONE':
-      finishJob(message.id, { status: 'done', percent: 100, filepath: String(message.filepath) });
+      finishJob(message.id, {
+        status: 'done',
+        percent: 100,
+        filepath: String(message.filepath),
+        fileCount: Number(message.fileCount) || 1,
+        failedCount: Number(message.failedCount) || 0,
+      });
       break;
     case 'ERROR':
       finishJob(message.id, { status: 'error', error: String(message.message || 'Erreur inconnue') });
@@ -153,18 +182,26 @@ function handleHostMessage(message) {
   }
 }
 
+function notify(title, message) {
+  chrome.notifications
+    .create({ type: 'basic', iconUrl: 'icons/icon128.png', title, message })
+    .catch((error) => console.error('Failed to show notification', error));
+}
+
 async function finishJob(id, changes) {
   await updateJob(id, changes);
   if (changes.status === 'cancelled') return;
   const job = (await loadJobs())[id];
   if (!job) return;
-  const succeeded = changes.status === 'done';
-  chrome.notifications.create(`job-${id}`, {
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
-    title: succeeded ? 'Téléchargement terminé' : 'Échec du téléchargement',
-    message: succeeded ? job.title || job.url : `${job.title || job.url}\n${job.error}`,
-  });
+  const name = job.title || job.url;
+  if (changes.status === 'done') {
+    const details = job.playlist
+      ? `${job.fileCount} fichier(s)` + (job.failedCount ? `, ${job.failedCount} échec(s)` : '')
+      : '';
+    notify('Téléchargement terminé', details ? `${name}\n${details}` : name);
+  } else {
+    notify('Échec du téléchargement', `${name}\n${job.error}`);
+  }
 }
 
 // --- Actions ---------------------------------------------------------------
@@ -178,58 +215,121 @@ function isDownloadableUrl(url) {
   }
 }
 
-async function startDownload(url, mode, quality) {
+function normalizeClip(clip) {
+  if (!clip) return null;
+  const { start = null, end = null } = clip;
+  const isValidTime = (value) => value === null || (Number.isFinite(value) && value >= 0);
+  if (!isValidTime(start) || !isValidTime(end)) throw new Error('Extrait invalide.');
+  if (end !== null && end <= (start || 0)) throw new Error("La fin de l'extrait doit être après le début.");
+  return start || end !== null ? { start, end } : null;
+}
+
+// options : { mode, quality, playlist?, clip? } ; le reste vient des reglages.
+async function startDownload(url, options) {
   if (!isDownloadableUrl(url)) throw new Error('Cette page ne contient pas de vidéo téléchargeable.');
+  const { mode, quality } = options;
   if (!MODES.includes(mode) || !QUALITIES.includes(quality)) throw new Error('Options invalides.');
+  const playlist = Boolean(options.playlist);
+  const clip = playlist ? null : normalizeClip(options.clip);
+  const settings = await loadSettings();
 
   const id = crypto.randomUUID();
   await updateJobs((jobs) => {
-    jobs[id] = { id, url, mode, quality, status: 'starting', percent: null, title: '', createdAt: Date.now() };
+    jobs[id] = { id, url, mode, quality, playlist, clip, status: 'starting', percent: null, title: '', createdAt: Date.now() };
   });
   try {
-    postToHost({ type: 'DOWNLOAD', id, url, mode, quality });
+    postToHost({
+      type: 'DOWNLOAD',
+      id,
+      url,
+      mode,
+      quality,
+      playlist,
+      clip,
+      playlistLimit: settings.playlistLimit,
+      downloadDir: settings.downloadDir,
+      cookiesFromBrowser: settings.cookiesFromBrowser,
+      subtitles: settings.subtitles,
+      subtitleLangs: settings.subtitleLangs,
+      thumbnail: settings.thumbnail,
+    });
   } catch (error) {
     await updateJob(id, { status: 'error', error: error.message });
   }
   return id;
 }
 
-async function getPrefs() {
-  const { prefs } = await chrome.storage.local.get('prefs');
-  return { ...DEFAULT_PREFS, ...prefs };
+async function startDownloadWithPrefs(url, overrides = {}) {
+  const prefs = await loadPrefs();
+  return startDownload(url, { ...prefs, ...overrides });
 }
 
-// --- Messages du popup -----------------------------------------------------
+// --- Messages --------------------------------------------------------------
+
+function isExtensionPage(sender) {
+  return sender.id === chrome.runtime.id && Boolean(sender.url?.startsWith(chrome.runtime.getURL('')));
+}
+
+function isPageButtonContentScript(sender) {
+  if (sender.id !== chrome.runtime.id || !sender.tab || !sender.url) return false;
+  try {
+    return PAGE_BUTTON_HOSTS.test(new URL(sender.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Popup et page de reglages : acces complet.
+const extensionPageHandlers = {
+  CHECK_HOST: () => requestHost('PING'),
+  UPDATE_YTDLP: () => requestHost('UPDATE_YTDLP'),
+  PICK_FOLDER: (message) => requestHost('PICK_FOLDER', { initialDir: String(message.initialDir || '') }),
+  START_DOWNLOAD: async (message) => ({
+    ok: true,
+    id: await startDownload(message.url, {
+      mode: message.mode,
+      quality: message.quality,
+      playlist: message.playlist,
+      clip: message.clip,
+    }),
+  }),
+  CANCEL_DOWNLOAD: async (message) => {
+    postToHost({ type: 'CANCEL', id: message.id });
+    return { ok: true };
+  },
+  OPEN_FOLDER: async (message) => {
+    const { downloadDir } = await loadSettings();
+    postToHost({ type: 'OPEN_FOLDER', id: message.id, downloadDir });
+    return { ok: true };
+  },
+  CLEAR_FINISHED: async () => {
+    await updateJobs((jobs) => {
+      for (const job of Object.values(jobs)) {
+        if (FINISHED_STATUSES.includes(job.status)) delete jobs[job.id];
+      }
+    });
+    return { ok: true };
+  },
+};
+
+// Bouton injecte dans les pages : peut seulement lancer un telechargement
+// avec les preferences enregistrees (le mode est le seul choix possible).
+const contentScriptHandlers = {
+  PAGE_DOWNLOAD: async (message) => {
+    if (!MODES.includes(message.mode)) throw new Error('Options invalides.');
+    return { ok: true, id: await startDownloadWithPrefs(message.url, { mode: message.mode }) };
+  },
+};
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Seules les pages de l'extension (popup) peuvent piloter les telechargements.
-  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
+  let handlers = null;
+  if (isExtensionPage(sender)) handlers = extensionPageHandlers;
+  else if (isPageButtonContentScript(sender)) handlers = contentScriptHandlers;
 
-  const handlers = {
-    CHECK_HOST: () => pingHost(),
-    START_DOWNLOAD: async () => ({ ok: true, id: await startDownload(message.url, message.mode, message.quality) }),
-    CANCEL_DOWNLOAD: async () => {
-      postToHost({ type: 'CANCEL', id: message.id });
-      return { ok: true };
-    },
-    OPEN_FOLDER: async () => {
-      postToHost({ type: 'OPEN_FOLDER', id: message.id });
-      return { ok: true };
-    },
-    CLEAR_FINISHED: async () => {
-      await updateJobs((jobs) => {
-        for (const job of Object.values(jobs)) {
-          if (FINISHED_STATUSES.includes(job.status)) delete jobs[job.id];
-        }
-      });
-      return { ok: true };
-    },
-  };
-
-  const handler = handlers[message?.type];
+  const handler = handlers?.[message?.type];
   if (!handler) return false;
   Promise.resolve()
-    .then(handler)
+    .then(() => handler(message))
     .then(sendResponse)
     .catch((error) => {
       console.error(`Failed to handle ${message.type}`, error);
@@ -238,7 +338,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// --- Menu contextuel -------------------------------------------------------
+// --- Menu contextuel et raccourci clavier -----------------------------------
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -255,18 +355,22 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const url = info.menuItemId === 'download-link' ? info.linkUrl : tab?.url || info.pageUrl;
+async function startDownloadFromShortcut(url) {
   try {
-    const { mode, quality } = await getPrefs();
-    await startDownload(url, mode, quality);
+    await startDownloadWithPrefs(url);
+    notify('Téléchargement lancé', url);
   } catch (error) {
-    console.error('Failed to start download from context menu', error);
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'icons/icon128.png',
-      title: 'Téléchargement impossible',
-      message: error.message,
-    });
+    console.error('Failed to start download', error);
+    notify('Téléchargement impossible', error.message);
   }
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  const url = info.menuItemId === 'download-link' ? info.linkUrl : tab?.url || info.pageUrl;
+  startDownloadFromShortcut(url);
+});
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  // Le raccourci accorde activeTab : l'URL de l'onglet est lisible.
+  if (command === 'download-current-tab') startDownloadFromShortcut(tab?.url);
 });

@@ -11,12 +11,19 @@ const STATUS_LABELS = {
   cancelled: 'Annulé',
 };
 const ACTIVE_STATUSES = ['starting', 'downloading', 'processing'];
+const TIME_PATTERN = /^\d{1,3}(:\d{1,2}){0,2}(\.\d+)?$/;
 
 const elements = {
   hostStatus: document.getElementById('host-status'),
+  openSettings: document.getElementById('open-settings'),
   pageUrl: document.getElementById('page-url'),
   mode: document.getElementById('mode'),
   quality: document.getElementById('quality'),
+  playlist: document.getElementById('playlist'),
+  clipFields: document.getElementById('clip-fields'),
+  clipStart: document.getElementById('clip-start'),
+  clipEnd: document.getElementById('clip-end'),
+  moreOptions: document.getElementById('more-options'),
   download: document.getElementById('download'),
   actionError: document.getElementById('action-error'),
   clear: document.getElementById('clear'),
@@ -42,7 +49,38 @@ function updateDownloadButton() {
   elements.download.disabled = !(hostReady && activeTabUrl);
 }
 
+// --- Extrait (debut / fin) ---------------------------------------------------
+
+// "1:20" -> 80, "1:02:03" -> 3723, "" -> null. Retourne NaN si invalide.
+function parseTime(text) {
+  const value = text.trim();
+  if (!value) return null;
+  if (!TIME_PATTERN.test(value)) return NaN;
+  return value.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+}
+
+function readClip() {
+  const start = parseTime(elements.clipStart.value);
+  const end = parseTime(elements.clipEnd.value);
+  elements.clipStart.setAttribute('aria-invalid', String(Number.isNaN(start)));
+  elements.clipEnd.setAttribute('aria-invalid', String(Number.isNaN(end)));
+  if (Number.isNaN(start) || Number.isNaN(end)) throw new Error('Format de temps invalide (exemple : 1:20).');
+  if (end !== null && end <= (start || 0)) throw new Error("La fin de l'extrait doit être après le début.");
+  return start || end !== null ? { start, end } : null;
+}
+
 // --- Initialisation --------------------------------------------------------
+
+function looksLikePlaylist(url) {
+  try {
+    const { hostname, pathname, searchParams } = new URL(url);
+    if (!/(^|\.)youtube\.com$/.test(hostname)) return false;
+    return pathname === '/playlist' || (searchParams.has('list') && !searchParams.has('v'))
+      || /^\/(@[^/]+|channel\/[^/]+)\/(videos|shorts|streams)\/?$/.test(pathname);
+  } catch {
+    return false;
+  }
+}
 
 async function loadActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -51,16 +89,21 @@ async function loadActiveTab() {
     activeTabUrl = url;
     elements.pageUrl.textContent = url;
     elements.pageUrl.title = url;
+    if (looksLikePlaylist(url)) {
+      elements.playlist.checked = true;
+      elements.moreOptions.open = true;
+      updateClipAvailability();
+    }
   } else {
     elements.pageUrl.textContent = 'Ouvrez une page contenant une vidéo.';
   }
   updateDownloadButton();
 }
 
-async function loadPrefs() {
-  const { prefs } = await chrome.storage.local.get('prefs');
-  if (prefs?.mode) elements.mode.value = prefs.mode;
-  if (prefs?.quality) elements.quality.value = prefs.quality;
+async function restorePrefs() {
+  const prefs = await loadPrefs();
+  elements.mode.value = prefs.mode;
+  elements.quality.value = prefs.quality;
   updateQualityAvailability();
 }
 
@@ -73,6 +116,11 @@ function savePrefs() {
 
 function updateQualityAvailability() {
   elements.quality.disabled = elements.mode.value === 'audio';
+}
+
+function updateClipAvailability() {
+  // Un extrait n'a pas de sens sur toute une playlist.
+  elements.clipFields.disabled = elements.playlist.checked;
 }
 
 async function checkHost() {
@@ -91,9 +139,11 @@ async function checkHost() {
     return;
   }
   hostReady = true;
-  status.classList.add('ok');
-  status.textContent = `Prêt · yt-dlp ${result.ytDlpVersion}` + (result.ffmpeg ? '' : ' · ffmpeg absent (qualité limitée, pas de MP3)');
-  status.title = `Dossier : ${result.downloadDir}`;
+  const warnings = [];
+  if (!result.ffmpeg) warnings.push('ffmpeg absent (qualité limitée, pas de MP3 ni d\'extrait)');
+  if (!result.deno) warnings.push('Deno absent (YouTube peut échouer)');
+  status.classList.add(warnings.length ? 'warn' : 'ok');
+  status.textContent = [`Prêt · yt-dlp ${result.ytDlpVersion}`, ...warnings].join(' · ');
   updateDownloadButton();
 }
 
@@ -110,12 +160,22 @@ function createButton(label, onClick) {
 
 function describeJob(job) {
   if (job.status === 'error') return job.error || STATUS_LABELS.error;
+  if (job.status === 'done' && job.playlist) {
+    return `${job.fileCount} fichier(s) téléchargé(s)` + (job.failedCount ? ` · ${job.failedCount} échec(s)` : '');
+  }
   if (job.status !== 'downloading') return STATUS_LABELS[job.status] || job.status;
   const parts = [];
+  if (job.item && job.itemCount) parts.push(`Vidéo ${job.item}/${job.itemCount}`);
   if (typeof job.percent === 'number') parts.push(`${job.percent.toFixed(1)} %`);
   if (job.speed && !job.speed.startsWith('Unknown')) parts.push(job.speed);
   if (job.eta && !['Unknown', 'NA'].includes(job.eta)) parts.push(`reste ${job.eta}`);
   return parts.join(' · ') || STATUS_LABELS.downloading;
+}
+
+function jobPrefix(job) {
+  if (job.playlist) return '☰ ';
+  if (job.clip) return '✂ ';
+  return job.mode === 'audio' ? '♪ ' : '';
 }
 
 function renderJob(job) {
@@ -124,7 +184,7 @@ function renderJob(job) {
 
   const title = document.createElement('div');
   title.className = 'job-title';
-  title.textContent = (job.mode === 'audio' ? '♪ ' : '') + (job.title || job.url);
+  title.textContent = jobPrefix(job) + (job.title || job.url);
   title.title = job.url;
   item.append(title);
 
@@ -171,33 +231,54 @@ async function runAction(message) {
   showActionError('');
   try {
     await sendToBackground(message);
+    return true;
   } catch (error) {
     showActionError(error.message);
+    return false;
   }
+}
+
+async function startDownload() {
+  showActionError('');
+  const playlist = elements.playlist.checked;
+  let clip = null;
+  try {
+    clip = playlist ? null : readClip();
+  } catch (error) {
+    showActionError(error.message);
+    return;
+  }
+  elements.download.disabled = true;
+  const started = await runAction({
+    type: 'START_DOWNLOAD',
+    url: activeTabUrl,
+    mode: elements.mode.value,
+    quality: elements.quality.value,
+    playlist,
+    clip,
+  });
+  if (started) {
+    elements.clipStart.value = '';
+    elements.clipEnd.value = '';
+  }
+  updateDownloadButton();
 }
 
 // --- Evenements ------------------------------------------------------------
 
 elements.mode.addEventListener('change', savePrefs);
 elements.quality.addEventListener('change', savePrefs);
+elements.playlist.addEventListener('change', updateClipAvailability);
 elements.clear.addEventListener('click', () => runAction({ type: 'CLEAR_FINISHED' }));
-elements.download.addEventListener('click', async () => {
-  elements.download.disabled = true;
-  await runAction({
-    type: 'START_DOWNLOAD',
-    url: activeTabUrl,
-    mode: elements.mode.value,
-    quality: elements.quality.value,
-  });
-  updateDownloadButton();
-});
+elements.download.addEventListener('click', startDownload);
+elements.openSettings.addEventListener('click', () => chrome.runtime.openOptionsPage());
 
 chrome.storage.session.onChanged.addListener((changes) => {
   if (changes.jobs) renderJobs(changes.jobs.newValue);
 });
 
 chrome.storage.session.get('jobs').then(({ jobs }) => renderJobs(jobs));
-loadPrefs().catch((error) => console.error('Failed to load preferences', error));
+restorePrefs().catch((error) => console.error('Failed to load preferences', error));
 loadActiveTab().catch((error) => console.error('Failed to read active tab', error));
 checkHost().catch((error) => {
   elements.hostStatus.className = 'status error';
