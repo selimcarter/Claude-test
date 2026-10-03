@@ -70,6 +70,13 @@
             <video id="screen-video-streaming" autoplay playsinline></video>
             <button type="button" class="fullscreen-btn" data-platform="streaming" data-i18n-title="fullscreen.enter" title="Plein ecran">⛶</button>
             <span class="screen-stats-overlay hidden" id="screen-stats-streaming"></span>
+            <div class="audio-delay-control hidden" id="audio-delay-control">
+              <span class="audio-delay-label" data-i18n="share.audioDelayLabel" data-i18n-title="share.audioDelayTitle" title="Si le son arrive avant l'image, augmentez ce reglage jusqu'a ce qu'ils soient synchronises.">Decalage audio</span>
+              <button type="button" id="audio-delay-minus" data-i18n-title="share.audioDelayDecreaseTitle" title="Diminuer le decalage">−</button>
+              <span id="audio-delay-value">0.0s</span>
+              <button type="button" id="audio-delay-plus" data-i18n-title="share.audioDelayIncreaseTitle" title="Augmenter le decalage">+</button>
+              <button type="button" id="audio-delay-reset" data-i18n-title="share.audioDelayResetTitle" title="Reinitialiser le decalage">⟲</button>
+            </div>
           </div>
           <div class="remote-request-controls hidden" id="remote-request-streaming">
             <button type="button" class="request-pause-btn" data-platform="streaming" data-i18n="share.requestPause">⏸ Demander une pause</button>

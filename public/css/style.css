@@ -366,6 +366,50 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 
 .fullscreen-btn:hover { background: rgba(10, 11, 16, 0.85); }
 
+/* Reglage manuel du decalage audio, cote spectateur uniquement : sur certains
+   reseaux (mobile/longue distance), le son du partage d'ecran arrive avant
+   l'image. Plutot que de deviner un reglage reseau unique qui marche pour
+   tout le monde, on laisse la personne qui regarde retarder le son jusqu'a
+   ce que ca corresponde a l'image, chez elle. Place a l'oppose du
+   screen-stats-overlay (bas-gauche) pour ne pas se superposer. */
+.audio-delay-control {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(10, 11, 16, 0.65);
+  color: #fff;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.audio-delay-label { white-space: nowrap; }
+
+.audio-delay-control button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.audio-delay-control button:hover { background: rgba(255, 255, 255, 0.2); }
+
+#audio-delay-value {
+  min-width: 34px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* Indicateur discret (resolution / debit reel / codec / relais TURN ou
    direct / raison de degradation) affiche pendant un partage d'ecran :
    permet de verifier objectivement l'effet d'un reglage reseau plutot que

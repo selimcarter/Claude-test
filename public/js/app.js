@@ -806,27 +806,119 @@ function limitVideoBitrate(sender, maxBitrate = 700000) {
   sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
+// ===================== Reglage manuel du decalage audio (cote spectateur) =====================
+// Sur certains reseaux (mobile/longue distance), le son du partage d'ecran
+// arrive avant l'image chez le spectateur (l'audio, beaucoup plus leger,
+// souffre moins de la latence que la video). On ne peut pas "avancer" la
+// video facilement, mais on peut retarder l'audio pour les faire
+// correspondre - et ce decalage reseau variant d'une personne/connexion a
+// l'autre, un reglage unique cote code ne marcherait pas pour tout le monde.
+// On laisse donc chaque spectateur regler ca lui-meme avec +/-, via un
+// DelayNode (Web Audio API) insere entre le flux audio recu et les
+// haut-parleurs. Le <video> reste toujours muet : le son ne passe que par ce
+// pipeline, jamais directement, sinon on l'entendrait deux fois.
+const AUDIO_DELAY_STORAGE_KEY = 'watchTogetherAudioDelayMs';
+const AUDIO_DELAY_STEP_MS = 100;
+const AUDIO_DELAY_MAX_MS = 3000;
+
+function loadAudioDelayMs() {
+  try {
+    const v = parseInt(localStorage.getItem(AUDIO_DELAY_STORAGE_KEY), 10);
+    if (!Number.isNaN(v) && v >= 0 && v <= AUDIO_DELAY_MAX_MS) return v;
+  } catch (e) { /* ignore */ }
+  return 0;
+}
+
+state.audioDelayMs = loadAudioDelayMs();
+state.screenAudioCtx = null;
+state.screenDelayNode = null;
+
+const audioDelayValueEl = document.getElementById('audio-delay-value');
+
+function updateAudioDelayDisplay() {
+  if (audioDelayValueEl) audioDelayValueEl.textContent = `${(state.audioDelayMs / 1000).toFixed(1)}s`;
+  if (state.screenDelayNode) state.screenDelayNode.delayTime.value = state.audioDelayMs / 1000;
+}
+updateAudioDelayDisplay();
+
+function setAudioDelayMs(ms) {
+  state.audioDelayMs = Math.min(AUDIO_DELAY_MAX_MS, Math.max(0, ms));
+  try { localStorage.setItem(AUDIO_DELAY_STORAGE_KEY, String(state.audioDelayMs)); } catch (e) { /* ignore */ }
+  updateAudioDelayDisplay();
+}
+
+document.getElementById('audio-delay-minus').addEventListener('click', () => setAudioDelayMs(state.audioDelayMs - AUDIO_DELAY_STEP_MS));
+document.getElementById('audio-delay-plus').addEventListener('click', () => setAudioDelayMs(state.audioDelayMs + AUDIO_DELAY_STEP_MS));
+document.getElementById('audio-delay-reset').addEventListener('click', () => setAudioDelayMs(0));
+
+function teardownRemoteAudioDelay() {
+  if (state.screenAudioCtx) {
+    state.screenAudioCtx.close().catch(() => {});
+  }
+  state.screenAudioCtx = null;
+  state.screenDelayNode = null;
+}
+
+function setupRemoteAudioDelay(stream) {
+  teardownRemoteAudioDelay();
+  if (stream.getAudioTracks().length === 0) return; // rien a retarder
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    state.screenAudioCtx = new AudioCtx();
+    const source = state.screenAudioCtx.createMediaStreamSource(stream);
+    state.screenDelayNode = state.screenAudioCtx.createDelay(AUDIO_DELAY_MAX_MS / 1000);
+    state.screenDelayNode.delayTime.value = state.audioDelayMs / 1000;
+    source.connect(state.screenDelayNode);
+    state.screenDelayNode.connect(state.screenAudioCtx.destination);
+    // Un AudioContext cree sans geste utilisateur demarre parfois suspendu
+    // (politique d'autoplay) : on le reprend a la premiere interaction.
+    if (state.screenAudioCtx.state === 'suspended') {
+      const resume = () => {
+        if (state.screenAudioCtx) state.screenAudioCtx.resume().catch(() => {});
+        document.removeEventListener('click', resume);
+        document.removeEventListener('touchstart', resume);
+      };
+      document.addEventListener('click', resume);
+      document.addEventListener('touchstart', resume);
+    }
+  } catch (e) {
+    debugLog('Impossible de creer le pipeline audio du decalage manuel', e);
+    state.screenAudioCtx = null;
+    state.screenDelayNode = null;
+  }
+}
+
 // stream vient soit du pair (isRemote: true), soit de notre propre partage
 // (isRemote: false, apercu local). Une seule plateforme de partage existe
 // ("streaming", generique a Netflix/Prime/etc.), donc un seul <video>.
 function showScreenPreview(stream, { isRemote }) {
   const videoEl = document.getElementById('screen-video-streaming');
   attachStream(videoEl, stream);
-  // Notre propre apercu doit rester muet : le son original joue deja dans
-  // l'onglet partage, sinon on l'entendrait en double (echo).
-  videoEl.muted = !isRemote;
+  // Le <video> reste toujours muet : notre propre apercu ne doit jamais
+  // jouer de son (echo avec l'onglet partage), et le son du flux distant
+  // passe par le pipeline Web Audio ci-dessus (reglage manuel du decalage).
+  videoEl.muted = true;
+  if (isRemote) {
+    setupRemoteAudioDelay(stream);
+  } else {
+    teardownRemoteAudioDelay();
+  }
   document.getElementById('screen-viewer-streaming').classList.remove('hidden');
-  // Les boutons "demander pause/avancer" n'ont de sens que cote spectateur
-  // (celui qui partage n'a pas besoin de se demander une pause a lui-meme).
+  // Les boutons "demander pause/avancer" et le reglage de decalage audio
+  // n'ont de sens que cote spectateur (celui qui partage n'a pas besoin de
+  // se demander une pause, ni de retarder un son qu'il entend deja en direct).
   document.getElementById('remote-request-streaming').classList.toggle('hidden', !isRemote);
+  document.getElementById('audio-delay-control').classList.toggle('hidden', !isRemote);
   if (isRemote) showToast(t('share.peerSharing'));
 }
 
 function clearScreenViewer() {
   stopScreenStatsOverlay();
+  teardownRemoteAudioDelay();
   clearVideoElement(document.getElementById('screen-video-streaming'));
   document.getElementById('screen-viewer-streaming').classList.add('hidden');
   document.getElementById('remote-request-streaming').classList.add('hidden');
+  document.getElementById('audio-delay-control').classList.add('hidden');
 }
 
 // Indicateur discret (resolution reelle / debit reel / codec / relais TURN
