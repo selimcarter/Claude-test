@@ -40,10 +40,10 @@ Ouvrez le popup : il doit afficher « Prêt · yt-dlp … ».
 
 ## Utilisation
 
-- **Bouton sur la page** (YouTube, TikTok, Instagram) : un bouton **⬇ Vidéo | ♪ MP3** apparaît en bas à droite. Sur YouTube il s'affiche sur les pages vidéo ; dans les fils TikTok/Instagram il télécharge la vidéo la plus visible à l'écran (si elle n'est pas trouvée, ouvrez la vidéo puis réessayez).
-- **Popup** : sur n'importe quelle page vidéo, choisir Vidéo (MP4) ou Audio (MP3) et la qualité max, puis **Télécharger**. Dans **Plus d'options** :
+- **Bouton sur la page** (YouTube, TikTok, Instagram) : un bouton **⬇ Vidéo | ♪ MP3 | ✂ Extrait** apparaît en bas à droite. Sur YouTube il s'affiche sur les pages vidéo ; dans les fils TikTok/Instagram il télécharge la vidéo la plus visible à l'écran (si elle n'est pas trouvée, ouvrez la vidéo puis réessayez).
+- **Télécharger un passage** : cliquez **✂ Extrait** sur la page, lancez la vidéo et cliquez **⏱ maintenant** au début puis à la fin du passage voulu (ou tapez les temps, ex. `1:20` et `2:45`), puis **⬇ Vidéo** ou **♪ MP3**. Le même choix existe dans le popup (champs « Extrait », boutons ⏱). Fin vide = jusqu'à la fin ; nécessite ffmpeg.
+- **Popup** : sur n'importe quelle page vidéo, choisir Vidéo (MP4) ou Audio (MP3) et la qualité max, puis **Télécharger**. Option :
   - **Toute la playlist / chaîne** : télécharge une playlist YouTube ou les vidéos d'une chaîne dans un sous-dossier (cochée automatiquement sur une page de playlist) ;
-  - **Extrait** : début et fin au format `1:20` ou `1:02:03` (fin vide = jusqu'à la fin ; nécessite ffmpeg).
 - **Raccourci clavier** : `Alt+Maj+D` télécharge la vidéo de l'onglet actif avec les derniers choix du popup (modifiable dans `chrome://extensions/shortcuts`).
 - **Clic droit** sur un lien ou une page → « Télécharger la vidéo ».
 - Le popup peut être fermé : le téléchargement continue et une notification s'affiche à la fin. Les fichiers arrivent dans `~/Downloads/VideoDownloader/` par défaut (bouton « Afficher »).

@@ -33,15 +33,22 @@
         </select>
       </label>
     </div>
-    <details id="more-options">
-      <summary>Plus d'options</summary>
-      <label class="checkbox"><input type="checkbox" id="playlist"> Toute la playlist / chaîne</label>
-      <fieldset id="clip-fields">
-        <legend>Extrait uniquement (facultatif)</legend>
-        <label>Début <input id="clip-start" type="text" inputmode="numeric" placeholder="0:00" autocomplete="off"></label>
-        <label>Fin <input id="clip-end" type="text" inputmode="numeric" placeholder="fin" autocomplete="off"></label>
-      </fieldset>
-    </details>
+    <fieldset id="clip-fields">
+      <legend>✂ Extrait (facultatif)</legend>
+      <label>Début
+        <span class="time-row">
+          <input id="clip-start" type="text" inputmode="numeric" placeholder="0:00" autocomplete="off">
+          <button type="button" class="now" data-now-for="clip-start" title="Position actuelle de la vidéo" hidden>⏱</button>
+        </span>
+      </label>
+      <label>Fin
+        <span class="time-row">
+          <input id="clip-end" type="text" inputmode="numeric" placeholder="fin" autocomplete="off">
+          <button type="button" class="now" data-now-for="clip-end" title="Position actuelle de la vidéo" hidden>⏱</button>
+        </span>
+      </label>
+    </fieldset>
+    <label class="checkbox"><input type="checkbox" id="playlist"> Toute la playlist / chaîne</label>
     <button id="download" type="button" disabled>Télécharger</button>
     <p id="action-error" class="error" role="alert" hidden></p>
   </section>

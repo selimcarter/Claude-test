@@ -313,11 +313,12 @@ const extensionPageHandlers = {
 };
 
 // Bouton injecte dans les pages : peut seulement lancer un telechargement
-// avec les preferences enregistrees (le mode est le seul choix possible).
+// avec les preferences enregistrees (seuls le mode et l'extrait sont choisis).
 const contentScriptHandlers = {
   PAGE_DOWNLOAD: async (message) => {
     if (!MODES.includes(message.mode)) throw new Error('Options invalides.');
-    return { ok: true, id: await startDownloadWithPrefs(message.url, { mode: message.mode }) };
+    const id = await startDownloadWithPrefs(message.url, { mode: message.mode, clip: message.clip ?? null });
+    return { ok: true, id };
   },
 };
 

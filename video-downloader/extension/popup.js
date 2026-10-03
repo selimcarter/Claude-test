@@ -11,7 +11,6 @@ const STATUS_LABELS = {
   cancelled: 'Annulé',
 };
 const ACTIVE_STATUSES = ['starting', 'downloading', 'processing'];
-const TIME_PATTERN = /^\d{1,3}(:\d{1,2}){0,2}(\.\d+)?$/;
 
 const elements = {
   hostStatus: document.getElementById('host-status'),
@@ -23,7 +22,7 @@ const elements = {
   clipFields: document.getElementById('clip-fields'),
   clipStart: document.getElementById('clip-start'),
   clipEnd: document.getElementById('clip-end'),
-  moreOptions: document.getElementById('more-options'),
+  nowButtons: document.querySelectorAll('[data-now-for]'),
   download: document.getElementById('download'),
   actionError: document.getElementById('action-error'),
   clear: document.getElementById('clear'),
@@ -32,6 +31,7 @@ const elements = {
 };
 
 let activeTabUrl = null;
+let activeTabId = null;
 let hostReady = false;
 
 async function sendToBackground(message) {
@@ -51,22 +51,38 @@ function updateDownloadButton() {
 
 // --- Extrait (debut / fin) ---------------------------------------------------
 
-// "1:20" -> 80, "1:02:03" -> 3723, "" -> null. Retourne NaN si invalide.
-function parseTime(text) {
-  const value = text.trim();
-  if (!value) return null;
-  if (!TIME_PATTERN.test(value)) return NaN;
-  return value.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+function readClip() {
+  for (const input of [elements.clipStart, elements.clipEnd]) {
+    input.setAttribute('aria-invalid', String(Number.isNaN(parseTime(input.value))));
+  }
+  return buildClip(elements.clipStart.value, elements.clipEnd.value);
 }
 
-function readClip() {
-  const start = parseTime(elements.clipStart.value);
-  const end = parseTime(elements.clipEnd.value);
-  elements.clipStart.setAttribute('aria-invalid', String(Number.isNaN(start)));
-  elements.clipEnd.setAttribute('aria-invalid', String(Number.isNaN(end)));
-  if (Number.isNaN(start) || Number.isNaN(end)) throw new Error('Format de temps invalide (exemple : 1:20).');
-  if (end !== null && end <= (start || 0)) throw new Error("La fin de l'extrait doit être après le début.");
-  return start || end !== null ? { start, end } : null;
+// Le content script (YouTube / TikTok / Instagram) donne la position de lecture.
+async function requestVideoTime() {
+  if (activeTabId === null) return null;
+  try {
+    const response = await chrome.tabs.sendMessage(activeTabId, { type: 'GET_VIDEO_TIME' });
+    return Number.isFinite(response?.currentTime) ? response : null;
+  } catch {
+    return null; // pas de content script sur ce site
+  }
+}
+
+async function setClipFieldToCurrentTime(input) {
+  const video = await requestVideoTime();
+  if (!video) {
+    showActionError('Position de lecture introuvable : lancez la vidéo puis réessayez.');
+    return;
+  }
+  showActionError('');
+  input.value = formatTime(video.currentTime);
+  input.setAttribute('aria-invalid', 'false');
+}
+
+async function showCurrentTimeButtonsIfAvailable() {
+  const available = (await requestVideoTime()) !== null;
+  for (const button of elements.nowButtons) button.hidden = !available;
 }
 
 // --- Initialisation --------------------------------------------------------
@@ -85,13 +101,13 @@ function looksLikePlaylist(url) {
 async function loadActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url || '';
+  activeTabId = tab?.id ?? null;
   if (/^https?:\/\//.test(url)) {
     activeTabUrl = url;
     elements.pageUrl.textContent = url;
     elements.pageUrl.title = url;
     if (looksLikePlaylist(url)) {
       elements.playlist.checked = true;
-      elements.moreOptions.open = true;
       updateClipAvailability();
     }
   } else {
@@ -272,6 +288,10 @@ elements.playlist.addEventListener('change', updateClipAvailability);
 elements.clear.addEventListener('click', () => runAction({ type: 'CLEAR_FINISHED' }));
 elements.download.addEventListener('click', startDownload);
 elements.openSettings.addEventListener('click', () => chrome.runtime.openOptionsPage());
+for (const button of elements.nowButtons) {
+  const input = document.getElementById(button.dataset.nowFor);
+  button.addEventListener('click', () => setClipFieldToCurrentTime(input));
+}
 
 chrome.storage.session.onChanged.addListener((changes) => {
   if (changes.jobs) renderJobs(changes.jobs.newValue);
@@ -279,7 +299,9 @@ chrome.storage.session.onChanged.addListener((changes) => {
 
 chrome.storage.session.get('jobs').then(({ jobs }) => renderJobs(jobs));
 restorePrefs().catch((error) => console.error('Failed to load preferences', error));
-loadActiveTab().catch((error) => console.error('Failed to read active tab', error));
+loadActiveTab()
+  .then(showCurrentTimeButtonsIfAvailable)
+  .catch((error) => console.error('Failed to read active tab', error));
 checkHost().catch((error) => {
   elements.hostStatus.className = 'status error';
   elements.hostStatus.textContent = `Erreur : ${error.message}`;
