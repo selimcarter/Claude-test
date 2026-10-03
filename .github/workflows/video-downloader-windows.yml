@@ -1,0 +1,59 @@
+# Construit la version Windows autonome (host.exe, sans Python) et la publie
+# dans la release "video-downloader-windows" (lien de telechargement fixe).
+name: Video Downloader - paquet Windows
+
+on:
+  push:
+    branches: [claude/quirky-bohr-gubaz2, main]
+    paths:
+      - 'video-downloader/**'
+      - '.github/workflows/video-downloader-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: video-downloader-windows
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installer PyInstaller
+        run: python -m pip install "pyinstaller==6.*"
+
+      - name: Construire host.exe
+        run: pyinstaller --noconfirm --onedir --name host --distpath build/dist --workpath build/work --specpath build video-downloader/host/host.py
+
+      - name: Test de fumee (PING -> PONG)
+        run: python video-downloader/host/tests/ping_host.py build/dist/host/host.exe
+
+      - name: Assembler le paquet
+        shell: pwsh
+        run: |
+          $root = 'package/VideoDownloader'
+          New-Item -ItemType Directory -Force -Path "$root/host/runtime" | Out-Null
+          Copy-Item -Recurse video-downloader/extension "$root/extension"
+          Copy-Item -Recurse build/dist/host/* "$root/host/runtime"
+          Copy-Item video-downloader/host/install_windows.bat, video-downloader/host/install_windows.ps1, video-downloader/host/config.example.json "$root/host"
+          Copy-Item video-downloader/README.md "$root/README.md"
+          Compress-Archive -Path $root -DestinationPath package/VideoDownloader-windows.zip
+
+      - name: Publier la release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete video-downloader-windows --cleanup-tag --yes || true
+          gh release create video-downloader-windows package/VideoDownloader-windows.zip \
+            --target "$GITHUB_SHA" \
+            --title "Video Downloader - Windows (sans Python)" \
+            --notes "Paquet Windows autonome construit depuis ${GITHUB_SHA::7}. Decompressez, chargez le dossier extension dans Chrome, puis lancez host/install_windows.bat."

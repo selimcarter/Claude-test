@@ -8,49 +8,76 @@
 </head>
 <body>
   <main>
-    <header>
-      <h1>Video Downloader · Réglages</h1>
-      <p id="save-status" class="muted" role="status" aria-live="polite"></p>
+    <header class="top">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v10m0 0-4-4m4 4 4-4M6 19h12" /></svg></span>
+        <div>
+          <h1>Réglages</h1>
+          <p class="subtitle">Video Downloader</p>
+        </div>
+      </div>
+      <p id="save-status" class="save-status" role="status" aria-live="polite"></p>
     </header>
 
-    <section>
-      <h2>État</h2>
-      <p id="host-status" class="muted">Vérification…</p>
+    <section class="card">
+      <h2>État des outils</h2>
+      <ul id="tools" class="tools">
+        <li id="tool-ytdlp"><span class="dot"></span><span class="tool-name">yt-dlp</span><span class="tool-state">…</span></li>
+        <li id="tool-ffmpeg"><span class="dot"></span><span class="tool-name">ffmpeg</span><span class="tool-state">…</span></li>
+        <li id="tool-deno"><span class="dot"></span><span class="tool-name">Deno</span><span class="tool-state">…</span></li>
+      </ul>
+      <p id="host-error" class="error" role="alert" hidden></p>
       <div class="row">
-        <button id="update-ytdlp" type="button">Mettre à jour yt-dlp</button>
+        <button id="update-ytdlp" type="button" class="btn primary">Mettre à jour yt-dlp</button>
         <span id="update-status" class="muted" role="status"></span>
       </div>
       <pre id="update-output" hidden></pre>
+      <label class="switch-row">
+        <span>
+          <span class="label">Mise à jour automatique</span>
+          <span id="last-update" class="hint">Une fois par jour, hors téléchargement en cours.</span>
+        </span>
+        <input id="auto-update" type="checkbox" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
     </section>
 
-    <section>
+    <section class="card">
       <h2>Dossier de téléchargement</h2>
       <div class="row">
         <input id="download-dir" type="text" spellcheck="false" aria-label="Dossier de téléchargement">
-        <button id="pick-folder" type="button">Parcourir…</button>
+        <button id="pick-folder" type="button" class="btn">Parcourir…</button>
       </div>
       <p class="hint">Laissez vide pour utiliser le dossier par défaut.</p>
       <p id="folder-error" class="error" role="alert" hidden></p>
     </section>
 
-    <section>
+    <section class="card">
       <h2>Fichiers</h2>
-      <label class="checkbox"><input id="thumbnail" type="checkbox"> Intégrer la miniature et les informations (titre, artiste…)</label>
-      <label class="checkbox"><input id="subtitles" type="checkbox"> Intégrer les sous-titres (vidéo uniquement)</label>
+      <label class="switch-row">
+        <span class="label">Intégrer la miniature et les informations (titre, artiste…)</span>
+        <input id="thumbnail" type="checkbox" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+      <label class="switch-row">
+        <span class="label">Intégrer les sous-titres (vidéo uniquement)</span>
+        <input id="subtitles" type="checkbox" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
       <label class="field">Langues des sous-titres
         <input id="subtitle-langs" type="text" spellcheck="false" placeholder="fr,en">
       </label>
       <p class="hint">Codes séparés par des virgules, par exemple <code>fr,en</code>. ffmpeg est nécessaire pour la miniature et les sous-titres.</p>
     </section>
 
-    <section>
+    <section class="card">
       <h2>Playlists</h2>
       <label class="field">Nombre maximum de vidéos par playlist
         <input id="playlist-limit" type="number" min="1" max="500" step="1">
       </label>
     </section>
 
-    <section>
+    <section class="card">
       <h2>Connexion (Instagram, contenus réservés)</h2>
       <label class="field">Utiliser la session du navigateur
         <select id="cookies-browser">
@@ -66,15 +93,17 @@
       <p class="hint">yt-dlp lit les cookies de ce navigateur pour accéder aux contenus qui demandent d'être connecté. Sous Windows, les cookies de Chrome/Edge sont souvent illisibles : connectez-vous à Instagram dans Firefox et choisissez Firefox.</p>
     </section>
 
-    <section>
-      <h2>Bouton sur les pages</h2>
-      <label class="checkbox"><input id="show-page-button" type="checkbox"> Afficher le bouton « Télécharger » sur YouTube, TikTok et Instagram</label>
-    </section>
-
-    <section>
-      <h2>Raccourci clavier</h2>
-      <p>Raccourci actuel : <kbd id="shortcut">non défini</kbd></p>
-      <button id="edit-shortcut" type="button">Modifier le raccourci</button>
+    <section class="card">
+      <h2>Sur les pages</h2>
+      <label class="switch-row">
+        <span class="label">Afficher le bouton « Télécharger » sur YouTube, TikTok et Instagram</span>
+        <input id="show-page-button" type="checkbox" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+      <div class="row shortcut-row">
+        <span>Raccourci clavier : <kbd id="shortcut">non défini</kbd></span>
+        <button id="edit-shortcut" type="button" class="btn">Modifier</button>
+      </div>
     </section>
   </main>
   <script src="shared.js"></script>

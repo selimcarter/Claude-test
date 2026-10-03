@@ -6,62 +6,103 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <div class="title-row">
-      <h1>Video Downloader</h1>
-      <button id="open-settings" type="button" class="link" title="Réglages">⚙ Réglages</button>
-    </div>
-    <p id="host-status" class="status" role="status">Vérification de l'hôte…</p>
-  </header>
+  <main class="app">
+    <header class="top">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0-4-4m4 4 4-4M6 19h12" /></svg>
+        </span>
+        <div>
+          <h1>Video Downloader</h1>
+          <p id="host-status" class="pill" role="status"><span class="dot"></span><span id="host-text">Connexion…</span></p>
+        </div>
+      </div>
+      <button id="open-settings" type="button" class="icon-btn" aria-label="Réglages" title="Réglages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+      </button>
+    </header>
 
-  <section class="card">
-    <p id="page-url" class="url" title=""></p>
-    <div class="options">
-      <label>Type
-        <select id="mode">
-          <option value="video">Vidéo (MP4)</option>
-          <option value="audio">Audio (MP3)</option>
-        </select>
-      </label>
-      <label>Qualité
-        <select id="quality">
-          <option value="best">Meilleure</option>
-          <option value="1080">1080p max</option>
-          <option value="720">720p max</option>
-          <option value="480">480p max</option>
-          <option value="360">360p max</option>
-        </select>
-      </label>
+    <section class="source" aria-label="Page actuelle">
+      <img id="favicon" class="favicon" alt="" hidden>
+      <span id="favicon-fallback" class="favicon fallback" aria-hidden="true">▶</span>
+      <div class="source-text">
+        <p id="page-title" class="source-title">Ouvrez une page contenant une vidéo</p>
+        <p id="page-site" class="source-site"></p>
+      </div>
+    </section>
+
+    <div class="segmented" role="radiogroup" aria-label="Type de fichier">
+      <input type="radio" name="mode" id="mode-video" value="video" checked>
+      <label for="mode-video">Vidéo</label>
+      <input type="radio" name="mode" id="mode-audio" value="audio">
+      <label for="mode-audio">MP3</label>
+      <span class="seg-indicator" aria-hidden="true"></span>
     </div>
-    <fieldset id="clip-fields">
-      <legend>✂ Extrait (facultatif)</legend>
-      <label>Début
-        <span class="time-row">
-          <input id="clip-start" type="text" inputmode="numeric" placeholder="0:00" autocomplete="off">
-          <button type="button" class="now" data-now-for="clip-start" title="Position actuelle de la vidéo" hidden>⏱</button>
-        </span>
-      </label>
-      <label>Fin
-        <span class="time-row">
-          <input id="clip-end" type="text" inputmode="numeric" placeholder="fin" autocomplete="off">
-          <button type="button" class="now" data-now-for="clip-end" title="Position actuelle de la vidéo" hidden>⏱</button>
-        </span>
-      </label>
+
+    <fieldset class="chips" id="quality-chips">
+      <legend>Qualité maximale</legend>
+      <input type="radio" name="quality" id="q-best" value="best" checked><label for="q-best">Max</label>
+      <input type="radio" name="quality" id="q-1080" value="1080"><label for="q-1080">1080p</label>
+      <input type="radio" name="quality" id="q-720" value="720"><label for="q-720">720p</label>
+      <input type="radio" name="quality" id="q-480" value="480"><label for="q-480">480p</label>
+      <input type="radio" name="quality" id="q-360" value="360"><label for="q-360">360p</label>
     </fieldset>
-    <label class="checkbox"><input type="checkbox" id="playlist"> Toute la playlist / chaîne</label>
-    <button id="download" type="button" disabled>Télécharger</button>
-    <p id="action-error" class="error" role="alert" hidden></p>
-  </section>
 
-  <section>
-    <div class="list-header">
-      <h2>Téléchargements</h2>
-      <button id="clear" type="button" class="link">Effacer terminés</button>
+    <div class="options">
+      <label class="switch-row">
+        <span class="switch-label"><span class="glyph" aria-hidden="true">✂</span> Extrait seulement</span>
+        <input type="checkbox" id="clip-toggle" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+      <div id="clip-panel" class="clip-panel" hidden>
+        <div id="timeline" class="timeline" hidden>
+          <div class="track"><div id="range-fill" class="range-fill"></div></div>
+          <input type="range" id="range-start" min="0" max="100" step="1" value="0" aria-label="Début de l'extrait">
+          <input type="range" id="range-end" min="0" max="100" step="1" value="100" aria-label="Fin de l'extrait">
+        </div>
+        <div class="time-fields">
+          <label class="time-field">
+            <span>Début</span>
+            <span class="time-input">
+              <input id="clip-start" type="text" inputmode="numeric" placeholder="0:00" autocomplete="off">
+              <button type="button" class="now" data-now-for="clip-start" title="Position actuelle de la vidéo" aria-label="Début = position actuelle" hidden>⏱</button>
+            </span>
+          </label>
+          <span class="arrow" aria-hidden="true">→</span>
+          <label class="time-field">
+            <span>Fin</span>
+            <span class="time-input">
+              <input id="clip-end" type="text" inputmode="numeric" placeholder="fin" autocomplete="off">
+              <button type="button" class="now" data-now-for="clip-end" title="Position actuelle de la vidéo" aria-label="Fin = position actuelle" hidden>⏱</button>
+            </span>
+          </label>
+        </div>
+      </div>
+      <label class="switch-row">
+        <span class="switch-label"><span class="glyph" aria-hidden="true">☰</span> Playlist / chaîne entière</span>
+        <input type="checkbox" id="playlist" role="switch">
+        <span class="switch" aria-hidden="true"></span>
+      </label>
     </div>
-    <ul id="jobs"></ul>
-    <p id="no-jobs" class="muted">Aucun téléchargement.</p>
-  </section>
 
+    <button id="download" type="button" class="cta" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10m0 0-4-4m4 4 4-4M6 19h12" /></svg>
+      <span id="download-label">Télécharger la vidéo</span>
+    </button>
+    <p id="action-error" class="error" role="alert" hidden></p>
+
+    <section class="activity" aria-labelledby="activity-title">
+      <div class="activity-head">
+        <h2 id="activity-title">Activité</h2>
+        <button id="clear" type="button" class="text-btn">Effacer terminés</button>
+      </div>
+      <ul id="jobs"></ul>
+      <div id="no-jobs" class="empty">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="36" height="26" rx="6" /><path d="m21 18 8 5-8 5z" /><path d="M14 41h20" /></svg>
+        <p>Vos téléchargements apparaîtront ici.</p>
+      </div>
+    </section>
+  </main>
   <script src="shared.js"></script>
   <script src="popup.js"></script>
 </body>

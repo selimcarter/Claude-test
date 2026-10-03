@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = {
   thumbnail: true,
   playlistLimit: 50,
   showPageButton: true,
+  autoUpdate: true,
 };
 
 const COOKIE_BROWSERS = ['firefox', 'chrome', 'edge', 'brave', 'opera', 'vivaldi', 'chromium', 'safari'];

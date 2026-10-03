@@ -4,7 +4,7 @@
 // service worker. Tant que le port natif est ouvert, Chrome garde le service
 // worker actif, donc un telechargement en cours n'est pas interrompu.
 
-importScripts('shared.js');
+importScripts('shared.js', 'errors.js');
 
 const HOST_NAME = 'com.videodownloader.host';
 const HOST_TIMEOUTS_MS = { PING: 10000, UPDATE_YTDLP: 330000, PICK_FOLDER: 620000 };
@@ -14,6 +14,9 @@ const QUALITIES = ['best', '1080', '720', '480', '360'];
 const FINISHED_STATUSES = ['done', 'error', 'cancelled'];
 // Sites sur lesquels le content script affiche son bouton (voir manifest).
 const PAGE_BUTTON_HOSTS = /(^|\.)(youtube\.com|tiktok\.com|instagram\.com)$/;
+const AUTO_UPDATE_ALARM = 'auto-update-ytdlp';
+const AUTO_UPDATE_CHECK_MINUTES = 360;
+const AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 let nativePort = null;
 const pendingRequests = new Map();
@@ -30,8 +33,7 @@ function loadJobs() {
       // marque "en cours" a ete interrompu avec l'ancien.
       for (const job of Object.values(jobs)) {
         if (!FINISHED_STATUSES.includes(job.status)) {
-          job.status = 'error';
-          job.error = 'Téléchargement interrompu.';
+          Object.assign(job, { status: 'error' }, errorFields('Téléchargement interrompu.'));
         }
       }
       return jobs;
@@ -59,6 +61,12 @@ function pruneFinishedJobs(jobs) {
   for (const job of finished.slice(MAX_FINISHED_JOBS)) delete jobs[job.id];
 }
 
+// Champs d'erreur d'un telechargement : message clair + conseil + detail brut.
+function errorFields(rawMessage) {
+  const { message, hint, details } = explainError(rawMessage);
+  return { error: message, errorHint: hint, errorDetails: details };
+}
+
 function updateJob(id, changes) {
   return updateJobs((jobs) => {
     if (jobs[id]) Object.assign(jobs[id], changes);
@@ -81,8 +89,7 @@ function getNativePort() {
     updateJobs((jobs) => {
       for (const job of Object.values(jobs)) {
         if (!FINISHED_STATUSES.includes(job.status)) {
-          job.status = 'error';
-          job.error = reason;
+          Object.assign(job, { status: 'error' }, errorFields(reason));
         }
       }
     });
@@ -130,12 +137,14 @@ function handleHostMessage(message) {
         ytDlpVersion: message.ytDlpVersion,
         ffmpeg: message.ffmpeg,
         deno: message.deno,
+        bundled: Boolean(message.bundled),
         defaultDownloadDir: message.defaultDownloadDir,
       });
       break;
     case 'UPDATE_RESULT':
       resolveHostRequest(message.requestId, {
         ok: true,
+        busy: Boolean(message.busy),
         updated: Boolean(message.ok),
         version: message.version,
         output: String(message.output || ''),
@@ -172,7 +181,7 @@ function handleHostMessage(message) {
       });
       break;
     case 'ERROR':
-      finishJob(message.id, { status: 'error', error: String(message.message || 'Erreur inconnue') });
+      finishJob(message.id, { status: 'error', ...errorFields(message.message || 'Erreur inconnue') });
       break;
     case 'CANCELLED':
       finishJob(message.id, { status: 'cancelled' });
@@ -200,7 +209,7 @@ async function finishJob(id, changes) {
       : '';
     notify('Téléchargement terminé', details ? `${name}\n${details}` : name);
   } else {
-    notify('Échec du téléchargement', `${name}\n${job.error}`);
+    notify('Échec du téléchargement', [name, job.error, job.errorHint].filter(Boolean).join('\n'));
   }
 }
 
@@ -254,7 +263,7 @@ async function startDownload(url, options) {
       thumbnail: settings.thumbnail,
     });
   } catch (error) {
-    await updateJob(id, { status: 'error', error: error.message });
+    await updateJob(id, { status: 'error', ...errorFields(error.message) });
   }
   return id;
 }
@@ -262,6 +271,48 @@ async function startDownload(url, options) {
 async function startDownloadWithPrefs(url, overrides = {}) {
   const prefs = await loadPrefs();
   return startDownload(url, { ...prefs, ...overrides });
+}
+
+// --- Mise a jour de yt-dlp --------------------------------------------------
+
+async function hasActiveJobs() {
+  return Object.values(await loadJobs()).some((job) => !FINISHED_STATUSES.includes(job.status));
+}
+
+// Lance la mise a jour et memorise le resultat (affiche dans les reglages).
+async function runYtDlpUpdate({ automatic }) {
+  const result = await requestHost('UPDATE_YTDLP');
+  if (!result.ok || !result.busy) {
+    const status = {
+      at: Date.now(),
+      automatic,
+      ok: Boolean(result.ok && result.updated),
+      version: result.version || null,
+      error: result.ok ? (result.updated ? '' : result.output.split('\n').pop()) : result.error,
+    };
+    await chrome.storage.local.set({ ytdlpUpdate: status });
+  }
+  return result;
+}
+
+async function autoUpdateIfDue() {
+  const [settings, { ytdlpUpdate }] = await Promise.all([loadSettings(), chrome.storage.local.get('ytdlpUpdate')]);
+  if (!settings.autoUpdate) return;
+  if (ytdlpUpdate && Date.now() - ytdlpUpdate.at < AUTO_UPDATE_INTERVAL_MS) return;
+  if (await hasActiveJobs()) return; // nouvel essai a la prochaine alarme
+  const result = await runYtDlpUpdate({ automatic: true });
+  console.info('Automatic yt-dlp update finished', result.ok && result.updated ? result.version : result);
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== AUTO_UPDATE_ALARM) return;
+  autoUpdateIfDue().catch((error) => console.error('Failed to auto-update yt-dlp', error));
+});
+
+async function ensureAutoUpdateAlarm() {
+  if (!(await chrome.alarms.get(AUTO_UPDATE_ALARM))) {
+    await chrome.alarms.create(AUTO_UPDATE_ALARM, { delayInMinutes: 1, periodInMinutes: AUTO_UPDATE_CHECK_MINUTES });
+  }
 }
 
 // --- Messages --------------------------------------------------------------
@@ -282,7 +333,7 @@ function isPageButtonContentScript(sender) {
 // Popup et page de reglages : acces complet.
 const extensionPageHandlers = {
   CHECK_HOST: () => requestHost('PING'),
-  UPDATE_YTDLP: () => requestHost('UPDATE_YTDLP'),
+  UPDATE_YTDLP: () => runYtDlpUpdate({ automatic: false }),
   PICK_FOLDER: (message) => requestHost('PICK_FOLDER', { initialDir: String(message.initialDir || '') }),
   START_DOWNLOAD: async (message) => ({
     ok: true,
@@ -341,7 +392,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // --- Menu contextuel et raccourci clavier -----------------------------------
 
+chrome.runtime.onStartup.addListener(() => {
+  ensureAutoUpdateAlarm().catch((error) => console.error('Failed to schedule auto-update', error));
+});
+
 chrome.runtime.onInstalled.addListener(() => {
+  ensureAutoUpdateAlarm().catch((error) => console.error('Failed to schedule auto-update', error));
   chrome.contextMenus.create({
     id: 'download-link',
     title: 'Télécharger la vidéo de ce lien',
@@ -362,7 +418,7 @@ async function startDownloadFromShortcut(url) {
     notify('Téléchargement lancé', url);
   } catch (error) {
     console.error('Failed to start download', error);
-    notify('Téléchargement impossible', error.message);
+    notify('Téléchargement impossible', explainError(error.message).message);
   }
 }
 

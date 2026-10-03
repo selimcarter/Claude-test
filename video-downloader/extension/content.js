@@ -45,47 +45,70 @@
   shadow.innerHTML = `
     <style>
       :host { all: initial; }
-      .ui { font: 13px/1.4 system-ui, sans-serif; color: #1f2328; }
+      .ui { font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #f4f4f8; }
+      button { all: unset; cursor: pointer; box-sizing: border-box; }
+      button:focus-visible { outline: 2px solid #ff2e93; outline-offset: 2px; }
+      button:disabled { opacity: 0.6; cursor: progress; }
+      [hidden] { display: none !important; }
+
+      /* Barre flottante : verre sombre + logo degrade */
       .bar {
         position: fixed; right: 20px; bottom: 20px; z-index: 2147483647;
-        display: flex; align-items: center; gap: 1px;
-        font-weight: 600; line-height: 1;
-        border-radius: 999px; overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+        display: flex; align-items: center; gap: 2px; padding: 4px;
+        border-radius: 999px; font-weight: 600; line-height: 1;
+        background: rgba(18, 18, 26, 0.78); border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        transition: transform 0.2s;
       }
-      .bar button { padding: 10px 14px; background: #d93025; color: #fff; }
-      .bar button:hover, .bar button[aria-expanded="true"] { background: #b3261e; }
-      button { all: unset; cursor: pointer; box-sizing: border-box; }
-      button:focus-visible { outline: 3px solid #1a73e8; outline-offset: -3px; }
-      button:disabled { opacity: 0.6; cursor: progress; }
+      .bar:hover { transform: translateY(-1px); }
+      .logo {
+        display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+        background: linear-gradient(120deg, #ff5a5f, #ff2e93 55%, #7b5cff); color: #fff; font-size: 15px;
+        box-shadow: 0 4px 12px rgba(255, 46, 147, 0.45);
+      }
+      .bar button { padding: 9px 12px; border-radius: 999px; color: #f4f4f8; transition: background 0.15s; }
+      .bar button:hover { background: rgba(255, 255, 255, 0.1); }
+      .bar button[aria-expanded="true"] { background: linear-gradient(120deg, #ff5a5f, #ff2e93 55%, #7b5cff); }
+
+      /* Panneau extrait et messages */
       .panel, .message {
-        position: fixed; right: 20px; bottom: 66px; z-index: 2147483647;
-        border-radius: 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        position: fixed; right: 20px; bottom: 72px; z-index: 2147483647; border-radius: 16px;
+        background: rgba(18, 18, 26, 0.9); border: 1px solid rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
       }
-      .panel { width: 260px; padding: 12px; background: #fff; }
-      .panel h2 { margin: 0 0 8px; font-size: 14px; }
+      .panel { width: 280px; padding: 14px; animation: rise 0.2s ease-out; }
+      @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+      .panel h2 { margin: 0 0 10px; font-size: 14px; font-weight: 700; }
       .row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-      .row span { width: 38px; color: #656d76; }
+      .row span { width: 38px; color: #9a9ab2; }
       input {
-        all: unset; box-sizing: border-box; flex: 1; min-width: 0;
-        padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; background: #fff;
+        all: unset; box-sizing: border-box; flex: 1; min-width: 0; padding: 7px 9px;
+        font: 600 13px ui-monospace, "Cascadia Mono", monospace; color: #f4f4f8;
+        background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 9px;
       }
-      input:focus { border-color: #1a73e8; }
-      input[aria-invalid="true"] { border-color: #cf222e; }
-      .now { padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; white-space: nowrap; }
-      .now:hover { background: #f6f8fa; }
-      .hint { margin: 0 0 10px; font-size: 12px; color: #656d76; }
+      input::placeholder { color: #6f6f86; }
+      input:focus { border-color: #ff2e93; }
+      input[aria-invalid="true"] { border-color: #ff5470; }
+      .now {
+        padding: 7px 9px; border-radius: 9px; white-space: nowrap; font-size: 12px;
+        background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      .now:hover { border-color: #ff2e93; }
+      .hint { margin: 2px 0 12px; font-size: 12px; color: #9a9ab2; }
       .actions { display: flex; gap: 6px; }
       .actions button {
-        flex: 1; text-align: center; padding: 8px; border-radius: 6px;
-        background: #d93025; color: #fff; font-weight: 600;
+        flex: 1; text-align: center; padding: 9px; border-radius: 10px; font-weight: 700; color: #fff;
+        background: linear-gradient(120deg, #ff5a5f, #ff2e93 55%, #7b5cff);
+        box-shadow: 0 6px 16px rgba(255, 46, 147, 0.35);
       }
-      .actions button:hover { background: #b3261e; }
-      .status { margin: 8px 0 0; font-size: 12px; color: #1a7f37; }
-      .status.error { color: #cf222e; }
-      .message { max-width: 280px; padding: 8px 12px; color: #fff; background: #1f2328; }
-      .message.error { background: #a40e26; }
-      [hidden] { display: none !important; }
+      .actions button:hover { filter: brightness(1.08); }
+      .status { margin: 10px 0 0; font-size: 12px; color: #3ddc97; }
+      .status.error { color: #ff5470; }
+      .message { max-width: 300px; padding: 10px 14px; }
+      .message.error { border-color: rgba(255, 84, 112, 0.6); color: #ffd0d8; }
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
     </style>
     <div class="ui">
       <div class="message" role="status" hidden></div>
@@ -109,8 +132,9 @@
         <p class="status" role="status" hidden></p>
       </div>
       <div class="bar">
-        <button type="button" data-mode="video" title="Télécharger la vidéo">⬇ Vidéo</button>
-        <button type="button" data-mode="audio" title="Télécharger l'audio (MP3)">♪ MP3</button>
+        <span class="logo" aria-hidden="true">⬇</span>
+        <button type="button" data-mode="video" title="Télécharger la vidéo">Vidéo</button>
+        <button type="button" data-mode="audio" title="Télécharger l'audio (MP3)">MP3</button>
         <button type="button" class="clip-toggle" aria-expanded="false" title="Télécharger seulement un passage">✂ Extrait</button>
       </div>
     </div>

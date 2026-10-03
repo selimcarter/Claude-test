@@ -24,9 +24,13 @@ import time
 from importlib.util import find_spec
 from pathlib import Path
 
-HOST_DIR = Path(__file__).resolve().parent
-CONFIG_PATH = HOST_DIR / "config.json"
 IS_WINDOWS = os.name == "nt"
+# Version Windows sans Python : host.exe (PyInstaller) dans host/runtime/.
+IS_FROZEN = getattr(sys, "frozen", False)
+APP_DIR = Path(sys.executable).resolve().parent.parent if IS_FROZEN else Path(__file__).resolve().parent
+CONFIG_PATH = APP_DIR / "config.json"
+# Outils embarques par l'installateur (yt-dlp.exe, ffmpeg, deno), prioritaires sur le PATH.
+BIN_DIR = APP_DIR / "bin"
 MAX_URL_LENGTH = 2048
 PROGRESS_INTERVAL_SECONDS = 0.5
 UPDATE_TIMEOUT_SECONDS = 300
@@ -44,6 +48,16 @@ jobs = {}  # id -> {"process": Popen, "files": [str], "cancelled": bool}
 # Selecteur de dossier natif, lance dans un processus a part : Tk doit tourner
 # dans le thread principal (obligatoire sur macOS) et ne doit pas bloquer
 # la lecture des messages de Chrome.
+# Windows : boite de dialogue native via PowerShell (aucun Python requis).
+FOLDER_PICKER_POWERSHELL = (
+    "Add-Type -AssemblyName System.Windows.Forms;"
+    "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog;"
+    "$dialog.Description = 'Dossier de telechargement';"
+    "$dialog.SelectedPath = $env:VD_INITIAL_DIR;"
+    "$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true};"
+    "if ($dialog.ShowDialog($owner) -eq 'OK') { [Console]::Out.Write($dialog.SelectedPath) }"
+)
+
 FOLDER_PICKER_SCRIPT = """
 import sys, tkinter
 from tkinter import filedialog
@@ -114,20 +128,41 @@ def resolve_download_dir(requested, config):
     return directory
 
 
+def tools_search_path():
+    return os.pathsep.join([str(BIN_DIR), os.environ.get("PATH", "")])
+
+
+def tools_env():
+    # BIN_DIR en tete du PATH : yt-dlp y trouve ffmpeg et deno embarques.
+    return dict(os.environ, PATH=tools_search_path(), PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+
+
+def find_tool(name):
+    return shutil.which(name, path=tools_search_path())
+
+
+def bundled_yt_dlp():
+    executable = shutil.which("yt-dlp", path=str(BIN_DIR))
+    return [executable] if executable else None
+
+
 def find_yt_dlp_command():
+    bundled = bundled_yt_dlp()
+    if bundled:
+        return bundled
     importlib.invalidate_caches()  # yt-dlp a pu etre installe depuis le lancement
-    if find_spec("yt_dlp") is not None:
+    if not IS_FROZEN and find_spec("yt_dlp") is not None:
         return [sys.executable, "-m", "yt_dlp"]
-    executable = shutil.which("yt-dlp")
+    executable = find_tool("yt-dlp")
     return [executable] if executable else None
 
 
 def has_ffmpeg():
-    return shutil.which("ffmpeg") is not None
+    return find_tool("ffmpeg") is not None
 
 
 def has_deno():
-    return shutil.which("deno") is not None
+    return find_tool("deno") is not None
 
 
 def subprocess_options():
@@ -140,7 +175,7 @@ def subprocess_options():
 def get_yt_dlp_version(command):
     try:
         result = subprocess.run(command + ["--version"], capture_output=True, text=True, timeout=30,
-                                **subprocess_options())
+                                env=tools_env(), **subprocess_options())
         return result.stdout.strip() or None
     except (OSError, subprocess.SubprocessError) as error:
         log(f"Impossible d'executer yt-dlp : {error}")
@@ -307,10 +342,9 @@ def watch_stderr(process, error_lines):
 
 def run_download(job_id, command, is_playlist):
     try:
-        env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                                   errors="replace", env=env, **subprocess_options())
+                                   errors="replace", env=tools_env(), **subprocess_options())
     except OSError as error:
         send_message({"type": "ERROR", "id": job_id, "message": f"Impossible de lancer yt-dlp : {error}"})
         return
@@ -396,12 +430,27 @@ def open_in_file_manager(path, select_file):
 
 # --- Maintenance -------------------------------------------------------------
 
+def build_update_command():
+    # yt-dlp.exe (embarque ou dans le PATH) se met a jour lui-meme avec -U ;
+    # une installation pip se met a jour avec pip.
+    bundled = bundled_yt_dlp()
+    if bundled:
+        return bundled + ["-U"]
+    if not IS_FROZEN and find_spec("yt_dlp") is not None:
+        return [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"]
+    executable = find_tool("yt-dlp")
+    return [executable, "-U"] if executable else None
+
+
 def update_yt_dlp(request_id):
-    if find_spec("yt_dlp") is not None:
-        command = [sys.executable, "-m", "pip", "install", "-U", "yt-dlp[default]"]
-    else:
-        executable = shutil.which("yt-dlp")
-        command = [executable, "-U"] if executable else None
+    with jobs_lock:
+        busy = any(job["process"].poll() is None for job in jobs.values())
+    if busy:
+        # Sous Windows, yt-dlp.exe ne peut pas etre remplace pendant qu'il tourne.
+        send_message({"type": "UPDATE_RESULT", "requestId": request_id, "ok": False, "busy": True,
+                      "output": "Des téléchargements sont en cours : réessayez une fois terminés."})
+        return
+    command = build_update_command()
 
     if not command:
         send_message({"type": "UPDATE_RESULT", "requestId": request_id, "ok": False,
@@ -409,7 +458,7 @@ def update_yt_dlp(request_id):
         return
     try:
         result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                timeout=UPDATE_TIMEOUT_SECONDS, **subprocess_options())
+                                timeout=UPDATE_TIMEOUT_SECONDS, env=tools_env(), **subprocess_options())
         output = (result.stdout + result.stderr).strip()
         ok = result.returncode == 0
     except (OSError, subprocess.SubprocessError) as error:
@@ -421,11 +470,20 @@ def update_yt_dlp(request_id):
                   "output": output[-1500:]})
 
 
+def build_folder_picker_command(initial_dir):
+    if IS_WINDOWS:
+        return ["powershell", "-NoProfile", "-STA", "-Command", FOLDER_PICKER_POWERSHELL]
+    return [sys.executable, "-c", FOLDER_PICKER_SCRIPT, str(initial_dir)]
+
+
 def pick_folder(request_id, initial_dir):
     try:
-        result = subprocess.run([sys.executable, "-c", FOLDER_PICKER_SCRIPT, str(initial_dir)],
-                                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                timeout=FOLDER_PICKER_TIMEOUT_SECONDS)
+        # Le dossier initial passe par l'environnement : jamais interprete comme code.
+        env = dict(os.environ, VD_INITIAL_DIR=str(initial_dir))
+        options = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
+        result = subprocess.run(build_folder_picker_command(initial_dir), capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=FOLDER_PICKER_TIMEOUT_SECONDS,
+                                env=env, **options)
         if result.returncode != 0:
             raise OSError(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "échec")
         path = result.stdout.strip()
@@ -450,6 +508,7 @@ def handle_message(message, config):
             "ytDlpVersion": get_yt_dlp_version(base_command) if base_command else None,
             "ffmpeg": has_ffmpeg(),
             "deno": has_deno(),
+            "bundled": bundled_yt_dlp() is not None,
             "defaultDownloadDir": str(default_download_dir(config)),
         })
 

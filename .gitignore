@@ -3,3 +3,6 @@ npm-debug.log*
 .DS_Store
 video-downloader/host/config.json
 __pycache__/
+video-downloader/host/bin/
+video-downloader/host/runtime/
+video-downloader/host/com.videodownloader.host.json

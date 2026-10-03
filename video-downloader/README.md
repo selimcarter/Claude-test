@@ -14,29 +14,24 @@ Une extension seule ne peut pas extraire de façon fiable les flux YouTube (sign
 
 ## Installation
 
-### 1. Prérequis
+### Windows — version autonome (recommandée, sans Python)
 
-| Outil | Rôle | Installation |
-|---|---|---|
-| **Python 3.9+** | exécute l'hôte natif | [python.org](https://www.python.org/downloads/) (Windows : cocher « Add to PATH ») |
-| **yt-dlp** | téléchargement | `python -m pip install -U "yt-dlp[default]"` (Windows : `py -3 -m pip …`) |
-| **ffmpeg** (recommandé) | fusion audio + vidéo HD, MP3 | Windows : `winget install Gyan.FFmpeg` · macOS : `brew install ffmpeg` · Linux : `sudo apt install ffmpeg` |
-| **Deno** (pour YouTube) | requis par yt-dlp pour YouTube | Windows : `winget install DenoLand.Deno` · macOS : `brew install deno` · Linux : voir [deno.com](https://deno.com) |
+1. Télécharger le paquet : <https://github.com/selimcarter/Claude-test/releases/download/video-downloader-windows/VideoDownloader-windows.zip> et le décompresser dans un dossier qui ne bougera plus (ex. `C:\VideoDownloader`).
+2. Dans `chrome://extensions` : activer le **Mode développeur** → **Charger l'extension non empaquetée** → dossier `VideoDownloader\extension`. L'ID doit être `ofpdpiefgkoalikmambabdamaodblcif`.
+3. Double-cliquer sur `VideoDownloader\host\install_windows.bat` (« Informations complémentaires » → « Exécuter quand même » si Windows avertit). Il télécharge **yt-dlp.exe**, et **ffmpeg** / **Deno** s'ils ne sont pas déjà installés, dans `host\bin\`.
+4. Redémarrer Chrome. La fenêtre de l'extension doit afficher « Prêt ».
 
-### 2. Charger l'extension
+Le paquet est construit automatiquement par GitHub Actions (`.github/workflows/video-downloader-windows.yml`) à chaque modification : `host.exe` est l'hôte Python compilé avec PyInstaller.
 
-1. Ouvrir `chrome://extensions`, activer le **Mode développeur**.
-2. **Charger l'extension non empaquetée** → sélectionner le dossier `video-downloader/extension`.
-3. L'ID affiché doit être `ofpdpiefgkoalikmambabdamaodblcif` (fixé par la clé du manifest).
+### Depuis les sources (Windows, macOS, Linux)
 
-### 3. Installer l'hôte natif
+Prérequis : **Python 3.9+**, **yt-dlp** (`python -m pip install -U "yt-dlp[default]"`), idéalement **ffmpeg** et **Deno** (nécessaire pour YouTube).
 
-- **Windows** : double-cliquer sur `host/install_windows.bat`.
-- **macOS / Linux** : `./host/install.sh`
+1. Charger le dossier `video-downloader/extension` comme ci-dessus.
+2. Windows : `host/install_windows.bat` · macOS / Linux : `./host/install.sh`.
+3. Redémarrer Chrome.
 
-Les scripts enregistrent l'hôte pour Chrome, Edge et Brave (et Chromium sous macOS/Linux), pour l'utilisateur courant et sans droits administrateur. **Ne déplacez plus le dossier ensuite** (sinon relancez le script).
-
-Ouvrez le popup : il doit afficher « Prêt · yt-dlp … ».
+**Ne déplacez plus le dossier après l'installation** (sinon relancez le script).
 
 ## Utilisation
 
@@ -47,6 +42,11 @@ Ouvrez le popup : il doit afficher « Prêt · yt-dlp … ».
 - **Raccourci clavier** : `Alt+Maj+D` télécharge la vidéo de l'onglet actif avec les derniers choix du popup (modifiable dans `chrome://extensions/shortcuts`).
 - **Clic droit** sur un lien ou une page → « Télécharger la vidéo ».
 - Le popup peut être fermé : le téléchargement continue et une notification s'affiche à la fin. Les fichiers arrivent dans `~/Downloads/VideoDownloader/` par défaut (bouton « Afficher »).
+
+## Mises à jour et erreurs
+
+- **yt-dlp se met à jour tout seul** une fois par jour (jamais pendant un téléchargement) ; désactivable dans les Réglages, qui affichent la date de la dernière mise à jour. Bouton « Mettre à jour yt-dlp » pour forcer.
+- **Erreurs en français clair** : vidéo privée, limite d'âge, connexion requise, vérification anti-robot, blocage géographique, DRM, site non pris en charge, outil manquant… avec un conseil et le détail technique repliable.
 
 ## Réglages
 
@@ -66,7 +66,7 @@ Les réglages de la page ont priorité ; `host/config.json` (voir `config.exampl
 | Symptôme | Solution |
 |---|---|
 | « Hôte natif introuvable » | Relancer le script d'installation ; vérifier que l'ID de l'extension est bien `ofpdpiefgkoalikmambabdamaodblcif`. |
-| « yt-dlp n'est pas installé » | `python -m pip install -U "yt-dlp[default]"` |
+| « Outil non installé » / « yt-dlp manquant » | Relancer `install_windows.bat` puis redémarrer Chrome. |
 | Échec sur YouTube/TikTok/Instagram alors que ça marchait | Les sites changent souvent : Réglages → **Mettre à jour yt-dlp**. |
 | Instagram demande une connexion | Renseigner `cookies_from_browser` (voir ci-dessus). |
 | Qualité basse, pas de MP3, pas d'extrait | Installer ffmpeg. |
@@ -82,6 +82,7 @@ Les réglages de la page ont priorité ; `host/config.json` (voir `config.exampl
 | `contextMenus` | entrées « Télécharger » du clic droit |
 | accès à youtube.com, tiktok.com, instagram.com | afficher le bouton « Télécharger » sur ces sites (content script, lit uniquement l'URL de la vidéo au clic) |
 | `notifications` | prévenir quand un téléchargement se termine ou échoue |
+| `alarms` | vérifier une fois par jour s'il faut mettre yt-dlp à jour |
 
 Aucune donnée n'est envoyée à un serveur tiers : seule l'URL de la page est transmise à yt-dlp sur votre machine.
 
