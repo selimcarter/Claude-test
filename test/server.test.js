@@ -183,3 +183,13 @@ test('limite du chat : le spam est ignore au-dela de 10 messages en 10 s', async
   await sleep(300);
   assert.strictEqual(count, 10);
 });
+
+test("une page d'un autre site ne peut pas se connecter", async () => {
+  const s = io(URL, { forceNew: true, reconnection: false, transports: ['websocket'], extraHeaders: { origin: 'https://site-pirate.example' } });
+  sockets.push(s);
+  const err = await once(s, 'connect_error');
+  assert.ok(err);
+  const res = await fetch(URL);
+  assert.ok(res.headers.get('content-security-policy').includes("frame-ancestors 'none'"));
+  assert.strictEqual(res.headers.get('x-powered-by'), null);
+});

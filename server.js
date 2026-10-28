@@ -16,6 +16,13 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
+  // Seules les pages de ce site peuvent ouvrir une connexion (pas un autre
+  // site qui embarquerait du code vers ce serveur). Sans en-tete Origin
+  // (outils, tests), la connexion reste acceptee.
+  allowRequest: (req, callback) => {
+    const { origin, host } = req.headers;
+    callback(null, !origin || origin === `https://${host}` || origin === `http://${host}`);
+  },
 });
 
 const PORT = process.env.PORT || 3000;
@@ -23,6 +30,35 @@ const PORT = process.env.PORT || 3000;
 // Temps laisse a un participant dont la connexion a coupe pour revenir dans
 // le meme salon, avec la meme identite, sans que l'autre le voie partir.
 const GRACE_MS = Number(process.env.GRACE_MS) || 45000;
+
+// En-tetes de securite : la page ne peut charger que ses propres fichiers et
+// le lecteur YouTube, ne peut pas etre affichee dans le cadre d'un autre site,
+// et ne transmet pas le code du salon (dans l'URL) aux sites externes.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const host = /^[\w.:-]+$/.test(req.headers.host || '') ? req.headers.host : '';
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    // YouTube exige l'origine du site pour ses lecteurs integres : on l'envoie,
+    // mais jamais le chemin ni le ?room=.
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self' https://www.youtube.com https://s.ytimg.com",
+      'frame-src https://www.youtube.com https://www.youtube-nocookie.com',
+      // wss/ws explicites : d'anciens Safari n'incluent pas les WebSocket dans 'self'.
+      `connect-src 'self' wss://${host} ws://${host}`,
+      "img-src 'self' data: https://i.ytimg.com",
+      "style-src 'self' 'unsafe-inline'",
+      "media-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+    ].join('; '),
+  });
+  next();
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 

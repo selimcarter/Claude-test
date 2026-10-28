@@ -81,9 +81,9 @@ function diag(event, extra = {}) {
 // ===================== Utilitaires =====================
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
+  // Generateur cryptographique (Math.random est previsible) ; 32 caracteres
+  // divisent 256, donc chaque caractere reste equiprobable.
+  return Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => chars[b % chars.length]).join('');
 }
 
 function showToast(msg, duration = 3000) {
