@@ -193,10 +193,12 @@ io.on('connection', (socket) => {
     socket.join(roomId);
 
     const others = roomUserList(roomId).filter((u) => u.id !== id);
-    socket.emit('joined', { self: { id, name: safeName }, peers: others });
-    // Retour dans le delai de grace : l'autre garde sa connexion video en
-    // place (un rechargement de page, lui, repart de zero : "fresh").
-    if (existing && !fresh) {
+    // Retour dans le delai de grace : chacun garde sa connexion video en
+    // place. Sinon (rechargement de page "fresh", ou serveur redemarre qui a
+    // oublie le salon), les DEUX cotes repartent de zero (reset).
+    const reset = !existing || Boolean(fresh);
+    socket.emit('joined', { self: { id, name: safeName }, peers: others, reset });
+    if (!reset) {
       socket.to(roomId).emit('peer-reconnected', { id });
     } else {
       socket.to(roomId).emit('peer-joined', { id, name: safeName });

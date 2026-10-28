@@ -65,9 +65,10 @@ test('retour dans le delai de grace : pas de depart annonce', async () => {
 
   const b2 = connect();
   const reconnected = once(a, 'peer-reconnected');
-  const { peers } = await join(b2, 'GRACE1', 'bob-12345');
+  const { peers, reset } = await join(b2, 'GRACE1', 'bob-12345');
   assert.deepStrictEqual(await reconnected, { id: 'bob-12345' });
   assert.deepStrictEqual(peers.map((p) => p.id), ['alice-1234']);
+  assert.strictEqual(reset, false, 'les connexions video doivent etre gardees');
 
   await sleep(GRACE_MS + 200);
   assert.deepStrictEqual(events, [], 'aucun peer-left ne doit etre envoye');
@@ -136,4 +137,16 @@ test('une place en delai de grace reste reservee', async () => {
   const full = once(c, 'room-full');
   c.emit('join-room', { roomId: 'GRACE3', name: 'carol', clientId: 'carol-1234' });
   await full;
+});
+
+test('rechargement de page (fresh) : les deux cotes repartent de zero', async () => {
+  const a = connect();
+  const b = connect();
+  await join(a, 'FRESH1', 'alice-1234');
+  await join(b, 'FRESH1', 'bob-12345');
+  const b2 = connect();
+  const joinedAgain = once(a, 'peer-joined');
+  const { reset } = await join(b2, 'FRESH1', 'bob-12345', { fresh: true });
+  assert.strictEqual(reset, true);
+  assert.strictEqual((await joinedAgain).id, 'bob-12345');
 });
