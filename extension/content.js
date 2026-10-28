@@ -104,8 +104,8 @@
     if (msg.type === 'status') {
       state.myId = msg.myId;
       state.peers = msg.peers || [];
-      // Config TURN dediee recuperee par background.js (voir /api/ice-servers
-      // sur le serveur) : sans ca, l'extension utilisait TOUJOURS le TURN
+      // Config TURN dediee recuperee par background.js (recue dans le message 'joined' du serveur
+      // ) : sans ca, l'extension utilisait TOUJOURS le TURN
       // public OpenRelay, meme quand un compte Metered dedie est configure
       // sur Render pour le site.
       if (Array.isArray(msg.iceServers) && msg.iceServers.length > 0) ICE_SERVERS = msg.iceServers;
