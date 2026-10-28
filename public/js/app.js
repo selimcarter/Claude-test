@@ -447,6 +447,9 @@ window.onYouTubeIframeAPIReady = function () {
     state.ytPendingLoad = null;
   }
 };
+// Ce fichier est un module (execute apres le chargement de la page) : l'API
+// YouTube a pu etre prete AVANT que ce rappel existe, et ne le rappellera pas.
+if (window.YT && window.YT.loaded) window.onYouTubeIframeAPIReady();
 
 // load = { videoId, time, playing } : demarre a la position donnee, en
 // lecture ou en pause (personne qui arrive en cours de video).
