@@ -8,23 +8,6 @@ let ws = null;
 let activeTabId = null;
 const session = { connected: false, serverUrl: '', roomId: '', name: '', myId: null, peers: [], iceServers: null };
 
-// Le service worker (pas soumis a la CSP de Netflix/Amazon, contrairement au
-// content script) recupere la config TURN dediee du serveur si elle est
-// configuree (voir /api/ice-servers cote server.js) : sans ca, l'extension se
-// retrouverait coincee sur le TURN public OpenRelay meme quand un compte
-// Metered dedie est configure pour le site.
-async function fetchIceServers(serverUrl) {
-  try {
-    const res = await fetch(`${serverUrl}/api/ice-servers`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const servers = await res.json();
-    if (Array.isArray(servers) && servers.length > 0) return servers;
-  } catch (e) {
-    console.debug('[watch-together-ext] Impossible de recuperer la config ICE, TURN public garde en secours', e);
-  }
-  return null;
-}
-
 function broadcastToPopup(msg) {
   chrome.runtime.sendMessage({ scope: 'popup', ...msg }).catch(() => {});
 }
@@ -58,7 +41,6 @@ async function connect({ serverUrl, roomId, name }) {
   session.serverUrl = serverUrl;
   session.roomId = roomId;
   session.name = name;
-  session.iceServers = await fetchIceServers(serverUrl);
 
   try {
     ws = new WebSocket(wsUrlFromServerUrl(serverUrl));
@@ -76,6 +58,8 @@ async function connect({ serverUrl, roomId, name }) {
     try { msg = JSON.parse(event.data); } catch (e) { return; }
 
     if (msg.type === 'joined') {
+      // Config TURN fournie par le serveur a l'entree dans le salon.
+      session.iceServers = Array.isArray(msg.iceServers) ? msg.iceServers : null;
       session.connected = true;
       session.myId = msg.self.id;
       session.peers = msg.peers;

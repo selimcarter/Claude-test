@@ -41,32 +41,9 @@ const CLIENT_ID = (() => {
 })();
 
 // ===================== Configuration reseau WebRTC =====================
-// STUN public (Google) + TURN public de secours (OpenRelay), utilise tant que
-// le serveur n'a pas de compte TURN dedie configure (voir server.js et le
-// README) : ce TURN public est partage par des milliers de projets dans le
-// monde, donc peu fiable en usage reel (saccades, connexions qui echouent).
-let ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-];
-
-// Le serveur peut fournir une config TURN dediee (identifiants prives, jamais
-// exposes dans le code source) : on la recupere des le chargement de la page,
-// pour que les connexions creees ensuite (des qu'on rejoint un salon) en
-// beneficient. Si rien n'est configure cote serveur, il renvoie simplement le
-// meme secours OpenRelay, donc rien ne change.
-fetch('/api/ice-servers')
-  .then((r) => r.json())
-  .then((servers) => {
-    if (Array.isArray(servers) && servers.length > 0) {
-      ICE_SERVERS = servers;
-      debugLog('Configuration ICE recuperee du serveur :', servers.length, 'entree(s)');
-    }
-  })
-  .catch((e) => debugLog('Impossible de recuperer la config ICE, on garde le secours integre', e));
+// STUN/TURN fournis par le serveur a l'entree dans le salon ('joined') : relais
+// Metered dedie si configure sur Render, sinon secours public (voir server.js).
+let ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 function debugLog(...args) {
   console.debug('[watch-together]', ...args);
@@ -218,7 +195,8 @@ socket.on('room-full', () => {
   showToast(t('status.roomFull'));
 });
 
-socket.on('joined', ({ self, peers, reset }) => {
+socket.on('joined', ({ self, peers, reset, iceServers }) => {
+  if (Array.isArray(iceServers) && iceServers.length > 0) ICE_SERVERS = iceServers;
   const rejoin = hasJoinedOnce;
   hasJoinedOnce = true;
   selfOffline = false;

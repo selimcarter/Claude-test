@@ -17,7 +17,7 @@
   };
 
   // STUN public + TURN public de secours (OpenRelay/Metered), utilise tant
-  // que le serveur n'a pas fourni sa config ICE dediee (voir fetchIceServers
+  // que le serveur n'a pas fourni sa config ICE dediee (fournie dans le message 'joined'
   // plus bas) : indispensable des que les 2 personnes ne sont pas sur le
   // meme reseau (NAT restrictif, 4G...), sinon la connexion camera echoue
   // silencieusement. Peut etre remplace dynamiquement (voir plus bas).

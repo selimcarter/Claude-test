@@ -37,26 +37,33 @@ const FALLBACK_ICE_SERVERS = [
   { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
-// Le client demande sa config ICE ici plutot que de l'avoir codee en dur :
-// permet de brancher un compte TURN dedie (identifiants prives, jamais
-// exposes dans le code source) juste via des variables d'environnement sur
-// Render, sans toucher au code.
-app.get('/api/ice-servers', async (req, res) => {
+// Config ICE (dont les identifiants TURN Metered, via variables
+// d'environnement Render) : envoyee uniquement aux personnes qui entrent dans
+// un salon (evenement 'joined'), plus via une URL publique ou n'importe qui
+// pouvait les recuperer et consommer le quota du relais.
+// shortcut: identifiants Metered permanents ; passer aux identifiants
+// temporaires (API "create credential" + METERED_SECRET_KEY) si le quota est abuse.
+const ICE_CACHE_MS = 10 * 60 * 1000;
+let iceCache = { servers: FALLBACK_ICE_SERVERS, until: 0 };
+
+async function getIceServers() {
   const apiKey = process.env.METERED_API_KEY;
   const domain = process.env.METERED_DOMAIN;
-  if (!apiKey || !domain) {
-    return res.json(FALLBACK_ICE_SERVERS);
-  }
+  if (!apiKey || !domain) return FALLBACK_ICE_SERVERS;
+  if (Date.now() < iceCache.until) return iceCache.servers;
   try {
-    const response = await fetch(`https://${domain}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`);
+    const response = await fetch(`https://${domain}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
     if (!response.ok) throw new Error(`Metered a repondu ${response.status}`);
-    const iceServers = await response.json();
-    res.json(iceServers);
+    iceCache = { servers: await response.json(), until: Date.now() + ICE_CACHE_MS };
   } catch (err) {
     console.error('Impossible de recuperer les identifiants TURN Metered, utilisation du secours:', err.message);
-    res.json(FALLBACK_ICE_SERVERS);
+    iceCache = { servers: FALLBACK_ICE_SERVERS, until: Date.now() + 60 * 1000 }; // reessaie dans 1 min
   }
-});
+  return iceCache.servers;
+}
+getIceServers(); // prechauffe le cache au demarrage
 
 // ===================== Journal des coupures =====================
 // Garde en memoire les derniers evenements de connexion (cote serveur et
@@ -137,10 +144,11 @@ io.on('connection', (socket) => {
   // Un handler qui plante (ex: un client qui envoie un message vide/null) ne
   // doit jamais faire tomber tout le serveur, donc tous les salons.
   const on = (event, handler) => socket.on(event, (payload) => {
+    const fail = (err) => console.error(`Erreur sur l'evenement "${event}":`, err);
     try {
-      handler(payload || {});
+      Promise.resolve(handler(payload || {})).catch(fail);
     } catch (err) {
-      console.error(`Erreur sur l'evenement "${event}":`, err);
+      fail(err);
     }
   });
 
@@ -151,8 +159,11 @@ io.on('connection', (socket) => {
     currentRoom = null;
   }
 
-  on('join-room', ({ roomId, name, clientId: requestedId, fresh }) => {
+  on('join-room', async ({ roomId, name, clientId: requestedId, fresh }) => {
     if (!roomId || typeof roomId !== 'string') return;
+    // Avant toute entree : l'autre commence a negocier la video des qu'il
+    // recoit peer-joined, il nous faut deja la config ICE a ce moment-la.
+    const iceServers = await getIceServers();
     roomId = roomId.trim().toUpperCase().slice(0, 20);
     const id = typeof requestedId === 'string' && /^[\w-]{8,64}$/.test(requestedId) ? requestedId : socket.id;
 
@@ -197,7 +208,7 @@ io.on('connection', (socket) => {
     // place. Sinon (rechargement de page "fresh", ou serveur redemarre qui a
     // oublie le salon), les DEUX cotes repartent de zero (reset).
     const reset = !existing || Boolean(fresh);
-    socket.emit('joined', { self: { id, name: safeName }, peers: others, reset });
+    socket.emit('joined', { self: { id, name: safeName }, peers: others, reset, iceServers });
     if (!reset) {
       socket.to(roomId).emit('peer-reconnected', { id });
     } else {
@@ -365,6 +376,10 @@ extWss.on('connection', (ws) => {
   ws.on('error', (err) => console.error('Erreur WebSocket extension:', err.message));
 
   ws.on('message', (raw) => {
+    handleMessage(raw).catch((err) => console.error('Erreur message extension:', err));
+  });
+
+  async function handleMessage(raw) {
     let msg;
     try {
       msg = JSON.parse(raw.toString());
@@ -374,8 +389,9 @@ extWss.on('connection', (ws) => {
     if (!msg || typeof msg !== 'object') return;
 
     if (msg.type === 'join') {
-      const roomId = String(msg.roomId || '').trim().toUpperCase();
+      const roomId = String(msg.roomId || '').trim().toUpperCase().slice(0, 20);
       if (!roomId) return;
+      const iceServers = await getIceServers();
 
       // Meme nettoyage que cote Socket.IO : eviter qu'un changement de salon
       // sans deconnexion ne laisse une entree fantome dans l'ancien.
@@ -405,7 +421,7 @@ extWss.on('connection', (ws) => {
       room.set(clientId, { ws, name });
 
       const others = extRoomUserList(roomId).filter((u) => u.id !== clientId);
-      sendJson(ws, { type: 'joined', self: { id: clientId, name }, peers: others });
+      sendJson(ws, { type: 'joined', self: { id: clientId, name }, peers: others, iceServers });
       broadcastExtRoom(roomId, { type: 'peer-joined', id: clientId, name }, clientId);
       broadcastExtRoom(roomId, { type: 'room-users', users: extRoomUserList(roomId) });
     } else if (msg.type === 'chat') {
@@ -434,7 +450,7 @@ extWss.on('connection', (ws) => {
       const target = room && room.get(msg.to);
       if (target) sendJson(target.ws, { type: 'signal', from: clientId, signal: msg.signal });
     }
-  });
+  }
 
   ws.on('close', () => {
     if (!currentRoom) return;

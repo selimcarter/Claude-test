@@ -47,7 +47,7 @@ test('un message vide ne fait pas planter le serveur', async () => {
   s.emit('join-room', null);
   s.emit('webrtc-signal');
   await sleep(200);
-  const res = await fetch(`${URL}/api/ice-servers`);
+  const res = await fetch(URL);
   assert.ok(res.ok);
 });
 
@@ -149,4 +149,12 @@ test('rechargement de page (fresh) : les deux cotes repartent de zero', async ()
   const { reset } = await join(b2, 'FRESH1', 'bob-12345', { fresh: true });
   assert.strictEqual(reset, true);
   assert.strictEqual((await joinedAgain).id, 'bob-12345');
+});
+
+test("la config du relais n'est donnee qu'aux personnes qui entrent dans un salon", async () => {
+  const res = await fetch(`${URL}/api/ice-servers`);
+  assert.strictEqual(res.status, 404);
+  const a = connect();
+  const { iceServers } = await join(a, 'ICE1', 'alice-1234');
+  assert.ok(Array.isArray(iceServers) && iceServers.length > 0);
 });
