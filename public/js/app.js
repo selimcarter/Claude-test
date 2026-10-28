@@ -10,7 +10,9 @@ const state = {
   peers: new Map(), // id -> name
   ytPlayer: null,
   ytReady: false,
-  ytPendingVideoId: null,
+  ytPendingLoad: null,
+  ytVideoId: null, // video YouTube en cours, renvoyee a une personne qui arrive
+  clockOffset: 0, // heure serveur - heure locale (voir 'joined')
   applyingRemoteYtChange: false,
   localStream: null,
   peerConnections: new Map(), // id -> RTCPeerConnection
@@ -195,8 +197,9 @@ socket.on('room-full', () => {
   showToast(t('status.roomFull'));
 });
 
-socket.on('joined', ({ self, peers, reset, iceServers }) => {
+socket.on('joined', ({ self, peers, reset, iceServers, serverTime }) => {
   if (Array.isArray(iceServers) && iceServers.length > 0) ICE_SERVERS = iceServers;
+  if (typeof serverTime === 'number') state.clockOffset = serverTime - Date.now();
   const rejoin = hasJoinedOnce;
   hasJoinedOnce = true;
   selfOffline = false;
@@ -251,6 +254,14 @@ socket.on('peer-joined', ({ id, name }) => {
   // signale sur quel onglet on se trouve actuellement, sinon elle reste sur
   // l'onglet par defaut (YouTube) jusqu'au prochain changement d'onglet.
   socket.emit('platform-select', { platform: state.currentPlatform });
+  // Idem pour la video YouTube en cours et sa position.
+  if (state.ytVideoId && state.ytPlayer && state.ytPlayer.getCurrentTime) {
+    socket.emit('yt-load', {
+      videoId: state.ytVideoId,
+      time: state.ytPlayer.getCurrentTime(),
+      playing: state.ytPlayer.getPlayerState() === YT.PlayerState.PLAYING,
+    });
+  }
 });
 
 // Ne touche qu'aux connexions de CE pair : un depart inconnu (ex: une
@@ -431,34 +442,40 @@ document.getElementById('copy-link-btn').addEventListener('click', () => {
 // ===================== YouTube =====================
 window.onYouTubeIframeAPIReady = function () {
   state.ytReady = true;
-  if (state.ytPendingVideoId) {
-    createYtPlayer(state.ytPendingVideoId);
-    state.ytPendingVideoId = null;
+  if (state.ytPendingLoad) {
+    createYtPlayer(state.ytPendingLoad);
+    state.ytPendingLoad = null;
   }
 };
 
-function createYtPlayer(videoId) {
+// load = { videoId, time, playing } : demarre a la position donnee, en
+// lecture ou en pause (personne qui arrive en cours de video).
+function createYtPlayer({ videoId, time, playing }) {
   document.getElementById('yt-placeholder').classList.add('hidden');
   if (state.ytPlayer) {
-    state.ytPlayer.loadVideoById(videoId);
+    const args = { videoId, startSeconds: time };
+    if (playing) state.ytPlayer.loadVideoById(args);
+    else state.ytPlayer.cueVideoById(args);
     return;
   }
   state.ytPlayer = new YT.Player('yt-player', {
     videoId,
-    playerVars: { playsinline: 1 },
+    playerVars: { playsinline: 1, start: Math.floor(time), autoplay: playing ? 1 : 0 },
     events: {
       onStateChange: onYtStateChange,
     },
   });
 }
 
-function loadYoutube(videoId, { broadcast }) {
+function loadYoutube(videoId, { broadcast, time = 0, playing = true }) {
+  state.ytVideoId = videoId;
+  const load = { videoId, time, playing };
   if (!state.ytReady) {
-    state.ytPendingVideoId = videoId;
+    state.ytPendingLoad = load;
   } else {
-    createYtPlayer(videoId);
+    createYtPlayer(load);
   }
-  if (broadcast) socket.emit('yt-load', { videoId });
+  if (broadcast) socket.emit('yt-load', load);
 }
 
 document.getElementById('yt-load-btn').addEventListener('click', () => {
@@ -468,7 +485,7 @@ document.getElementById('yt-load-btn').addEventListener('click', () => {
   loadYoutube(videoId, { broadcast: true });
 });
 
-socket.on('yt-load', ({ videoId }) => loadYoutube(videoId, { broadcast: false }));
+socket.on('yt-load', ({ videoId, time, playing }) => loadYoutube(videoId, { broadcast: false, time, playing }));
 
 function onYtStateChange(event) {
   if (state.applyingRemoteYtChange) return;
@@ -483,7 +500,10 @@ function onYtStateChange(event) {
 socket.on('yt-state', ({ state: playState, time, ts }) => {
   if (!state.ytPlayer || !state.ytPlayer.getCurrentTime) return;
   state.applyingRemoteYtChange = true;
-  const latency = Math.max(0, (Date.now() - ts) / 1000);
+  // ts est l'heure du serveur : on la compare a NOTRE horloge corrigee de son
+  // ecart avec le serveur, sinon une horloge de telephone decalee de quelques
+  // secondes faisait sauter la video a chaque lecture/pause.
+  const latency = Math.max(0, (Date.now() + state.clockOffset - ts) / 1000);
   const targetTime = time + (playState === 'play' ? latency : 0);
   if (Math.abs(state.ytPlayer.getCurrentTime() - targetTime) > 1.5) {
     state.ytPlayer.seekTo(targetTime, true);

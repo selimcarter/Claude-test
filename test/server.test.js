@@ -158,3 +158,18 @@ test("la config du relais n'est donnee qu'aux personnes qui entrent dans un salo
   const { iceServers } = await join(a, 'ICE1', 'alice-1234');
   assert.ok(Array.isArray(iceServers) && iceServers.length > 0);
 });
+
+test('YouTube : position relayee, donnees invalides ignorees', async () => {
+  const a = connect();
+  const b = connect();
+  await join(a, 'YT1', 'alice-1234');
+  await join(b, 'YT1', 'bob-12345');
+  const received = [];
+  b.on('yt-load', (m) => received.push(m));
+  b.on('platform-select', (m) => received.push(m));
+  a.emit('yt-load', { videoId: '<img src=x>' });
+  a.emit('platform-select', { platform: 'evil' });
+  a.emit('yt-load', { videoId: 'dQw4w9WgXcQ', time: 42.5, playing: false });
+  await sleep(200);
+  assert.deepStrictEqual(received, [{ videoId: 'dQw4w9WgXcQ', time: 42.5, playing: false }]);
+});

@@ -106,6 +106,13 @@ app.get('/admin/logs', (req, res) => {
   res.type('text/plain; charset=utf-8').send(lines.join('\n') || 'Aucun evenement enregistre depuis le dernier demarrage du serveur.');
 });
 
+// ===================== Validation des donnees relayees =====================
+// Ce que les navigateurs envoient est relaye tel quel a l'autre : on n'accepte
+// que des valeurs du format attendu.
+const PLATFORMS = ['youtube', 'streaming'];
+const isVideoId = (v) => typeof v === 'string' && /^[\w-]{11}$/.test(v);
+const isTime = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
 // ===================== Salons =====================
 // roomId -> { users: Map<clientId, { socketId, name, graceTimer }> }
 // clientId est l'identite stable du participant (elle survit aux
@@ -208,7 +215,9 @@ io.on('connection', (socket) => {
     // place. Sinon (rechargement de page "fresh", ou serveur redemarre qui a
     // oublie le salon), les DEUX cotes repartent de zero (reset).
     const reset = !existing || Boolean(fresh);
-    socket.emit('joined', { self: { id, name: safeName }, peers: others, reset, iceServers });
+    // serverTime : permet au navigateur de corriger l'ecart entre son horloge
+    // et celle du serveur (synchro YouTube).
+    socket.emit('joined', { self: { id, name: safeName }, peers: others, reset, iceServers, serverTime: Date.now() });
     if (!reset) {
       socket.to(roomId).emit('peer-reconnected', { id });
     } else {
@@ -252,24 +261,21 @@ io.on('connection', (socket) => {
 
   // --- Platform / tab selection, shared so both users see the same view ---
   on('platform-select', ({ platform }) => {
-    if (!currentRoom) return;
+    if (!currentRoom || !PLATFORMS.includes(platform)) return;
     socket.to(currentRoom).emit('platform-select', { platform });
   });
 
   // --- YouTube sync (real playback control via YouTube IFrame API) ---
-  on('yt-load', ({ videoId }) => {
-    if (!currentRoom) return;
-    socket.to(currentRoom).emit('yt-load', { videoId });
+  // time/playing : position et etat de lecture, pour qu'une personne qui
+  // arrive en cours de video demarre au meme endroit.
+  on('yt-load', ({ videoId, time, playing }) => {
+    if (!currentRoom || !isVideoId(videoId)) return;
+    socket.to(currentRoom).emit('yt-load', { videoId, time: isTime(time) ? time : 0, playing: playing !== false });
   });
 
   on('yt-state', ({ state, time }) => {
-    if (!currentRoom) return;
+    if (!currentRoom || !['play', 'pause'].includes(state) || !isTime(time)) return;
     socket.to(currentRoom).emit('yt-state', { state, time, ts: Date.now() });
-  });
-
-  on('yt-seek', ({ time }) => {
-    if (!currentRoom) return;
-    socket.to(currentRoom).emit('yt-seek', { time, ts: Date.now() });
   });
 
   // --- Demandes pause/avance (depuis la vue partage d'ecran) ---
@@ -302,7 +308,7 @@ io.on('connection', (socket) => {
   });
 
   on('screen-share-platform', ({ platform }) => {
-    if (!currentRoom || !platform) return;
+    if (!currentRoom || !PLATFORMS.includes(platform)) return;
     socket.to(currentRoom).emit('screen-share-platform', { platform });
   });
 
