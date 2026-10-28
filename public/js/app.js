@@ -7,7 +7,6 @@ const state = {
   roomId: null,
   myId: null,
   myName: null,
-  peers: new Map(), // id -> name
   ytPlayer: null,
   ytReady: false,
   ytPendingLoad: null,
@@ -29,7 +28,7 @@ const socket = io();
 // Identite stable de cet onglet (survit aux reconnexions et aux
 // rechargements) : le serveur rend sa place au meme participant au lieu de
 // l'annoncer comme parti puis revenu.
-const CLIENT_ID = (() => {
+let CLIENT_ID = (() => {
   try {
     let id = sessionStorage.getItem('watchTogetherClientId');
     if (!id) {
@@ -41,6 +40,22 @@ const CLIENT_ID = (() => {
     return crypto.randomUUID();
   }
 })();
+
+// "Dupliquer l'onglet" copie aussi cette identite : les deux onglets se
+// prendraient alors la place a tour de role. Chaque onglet annonce son
+// identite a l'ouverture ; si un onglet deja ouvert l'utilise, on en change.
+try {
+  const tabs = new BroadcastChannel('watchTogetherTabs');
+  tabs.onmessage = ({ data }) => {
+    if (data === `hello:${CLIENT_ID}`) {
+      tabs.postMessage(`taken:${CLIENT_ID}`);
+    } else if (data === `taken:${CLIENT_ID}` && !hasJoinedOnce) {
+      CLIENT_ID = crypto.randomUUID();
+      sessionStorage.setItem('watchTogetherClientId', CLIENT_ID);
+    }
+  };
+  tabs.postMessage(`hello:${CLIENT_ID}`);
+} catch (e) { /* BroadcastChannel indisponible : cas rare, sans gravite */ }
 
 // ===================== Configuration reseau WebRTC =====================
 // STUN/TURN fournis par le serveur a l'entree dans le salon ('joined') : relais
@@ -607,6 +622,23 @@ function mediaErrorMessage(err, what) {
   }
 }
 
+// Si la camera OU le micro manque (ou est pris par une autre appli), on garde
+// ce qui est disponible plutot que de tout perdre. Un refus d'autorisation,
+// lui, s'applique aux deux : pas de nouvel essai.
+async function getCameraStream() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  } catch (err) {
+    if (err.name === 'NotAllowedError' || err.name === 'SecurityError') throw err;
+    for (const constraints of [{ video: true }, { audio: true }]) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) { /* essai suivant */ }
+    }
+    throw err;
+  }
+}
+
 async function initMedia() {
   // Deja en possession d'une camera active (ex: reconnexion apres un reveil
   // du serveur) : pas besoin de redemander l'acces, on reutilise le flux.
@@ -620,7 +652,7 @@ async function initMedia() {
     return;
   }
   try {
-    state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    state.localStream = await getCameraStream();
     state.localStream.getAudioTracks().forEach((track) => { track.enabled = state.micOn; }); // micro coupe par defaut
     watchLocalTracks();
     localVideo.muted = true; // obligatoire pour l'autoplay du flux local
@@ -654,7 +686,7 @@ async function ensureCameraAlive() {
   if (!stream.getTracks().some((track) => track.readyState === 'ended')) return;
   let fresh;
   try {
-    fresh = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    fresh = await getCameraStream();
   } catch (err) {
     showToast(mediaErrorMessage(err, t('media.whatCameraMic')), 6000);
     return;
@@ -835,7 +867,14 @@ socket.on('webrtc-signal', async ({ from, signal }) => {
   } else {
     pc = connectToPeer(from);
   }
-  await applyIncomingSignal(pc, from, signal);
+  // Une erreur ici (description refusee par le navigateur...) restait
+  // silencieuse ; elle est desormais journalisee pour comprendre un blocage.
+  try {
+    await applyIncomingSignal(pc, from, signal);
+  } catch (err) {
+    debugLog('Erreur de negociation video', signal.kind, from, err);
+    diag('erreur-negociation', { kind: signal.kind || 'camera', msg: err.message });
+  }
 });
 
 // Le libelle du bouton reflete l'action qu'il declenchera (et non un simple
