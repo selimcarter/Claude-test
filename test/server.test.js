@@ -193,3 +193,16 @@ test("une page d'un autre site ne peut pas se connecter", async () => {
   assert.ok(res.headers.get('content-security-policy').includes("frame-ancestors 'none'"));
   assert.strictEqual(res.headers.get('x-powered-by'), null);
 });
+
+test('extension : entree dans le salon avec la config du relais, heartbeat accepte', async () => {
+  const WebSocket = require('ws');
+  const ws = new WebSocket(`ws://localhost:${PORT}/ext-ws`);
+  await once(ws, 'open');
+  ws.send(JSON.stringify({ type: 'ping' }));
+  ws.send(JSON.stringify({ type: 'join', roomId: 'EXT1', name: 'ext' }));
+  const [raw] = await once(ws, 'message').then((m) => [m]);
+  const msg = JSON.parse(raw);
+  assert.strictEqual(msg.type, 'joined');
+  assert.ok(Array.isArray(msg.iceServers) && msg.iceServers.length > 0);
+  ws.close();
+});

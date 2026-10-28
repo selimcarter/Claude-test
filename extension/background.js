@@ -36,6 +36,13 @@ function wsUrlFromServerUrl(serverUrl) {
   return u.toString();
 }
 
+// Reconnexion automatique (comme le site) si la connexion coupe sans que
+// l'utilisateur ait clique "deconnecter", et heartbeat toutes les 20 s : un
+// WebSocket silencieux peut etre coupe par le reseau, et sans activite Chrome
+// endort le service worker de l'extension.
+let reconnectTimer = null;
+let heartbeatTimer = null;
+
 async function connect({ serverUrl, roomId, name }) {
   disconnect();
   session.serverUrl = serverUrl;
@@ -49,8 +56,10 @@ async function connect({ serverUrl, roomId, name }) {
     return;
   }
 
-  ws.addEventListener('open', () => {
-    ws.send(JSON.stringify({ type: 'join', roomId, name }));
+  const socket = ws;
+  socket.addEventListener('open', () => {
+    socket.send(JSON.stringify({ type: 'join', roomId, name }));
+    heartbeatTimer = setInterval(() => socket.send(JSON.stringify({ type: 'ping' })), 20000);
   });
 
   ws.addEventListener('message', (event) => {
@@ -89,10 +98,12 @@ async function connect({ serverUrl, roomId, name }) {
     }
   });
 
-  ws.addEventListener('close', () => {
+  socket.addEventListener('close', () => {
+    clearInterval(heartbeatTimer);
     session.connected = false;
     broadcastToPopup(statusPayload());
     sendToContentScript({ type: 'status', connected: false, peers: [] });
+    if (ws === socket) reconnectTimer = setTimeout(() => connect({ serverUrl, roomId, name }), 3000);
   });
 
   ws.addEventListener('error', () => {
@@ -101,9 +112,12 @@ async function connect({ serverUrl, roomId, name }) {
 }
 
 function disconnect() {
+  clearTimeout(reconnectTimer);
+  clearInterval(heartbeatTimer);
   if (ws) {
-    try { ws.close(); } catch (e) { /* noop */ }
-    ws = null;
+    const closing = ws;
+    ws = null; // avant close() : son evenement 'close' ne doit pas relancer de reconnexion
+    try { closing.close(); } catch (e) { /* noop */ }
   }
   session.connected = false;
   session.myId = null;
