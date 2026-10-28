@@ -173,3 +173,13 @@ test('YouTube : position relayee, donnees invalides ignorees', async () => {
   await sleep(200);
   assert.deepStrictEqual(received, [{ videoId: 'dQw4w9WgXcQ', time: 42.5, playing: false }]);
 });
+
+test('limite du chat : le spam est ignore au-dela de 10 messages en 10 s', async () => {
+  const a = connect();
+  await join(a, 'SPAM1', 'alice-1234');
+  let count = 0;
+  a.on('chat-message', () => { count += 1; });
+  for (let i = 0; i < 30; i++) a.emit('chat-message', { text: `spam ${i}` });
+  await sleep(300);
+  assert.strictEqual(count, 10);
+});

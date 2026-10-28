@@ -93,12 +93,19 @@ function sha256(text) {
 
 // Page protegee par mot de passe (variable ADMIN_TOKEN sur Render) : le
 // navigateur affiche sa fenetre de connexion, n'importe quel identifiant.
+// Anti force brute : au-dela de 20 mauvais mots de passe en 15 min, la page
+// se bloque jusqu'a la fin de la fenetre.
+let failedLogins = { start: 0, count: 0 };
+
 app.get('/admin/logs', (req, res) => {
   const token = process.env.ADMIN_TOKEN;
   if (!token) return res.status(404).send('Journal desactive : definissez la variable ADMIN_TOKEN sur Render.');
+  if (Date.now() - failedLogins.start > 15 * 60 * 1000) failedLogins = { start: Date.now(), count: 0 };
+  if (failedLogins.count >= 20) return res.status(429).send('Trop de tentatives, reessayez dans 15 minutes.');
   const encoded = (req.headers.authorization || '').split(' ')[1] || '';
   const password = Buffer.from(encoded, 'base64').toString().split(':').slice(1).join(':');
   if (!crypto.timingSafeEqual(sha256(password), sha256(token))) {
+    failedLogins.count += 1;
     res.set('WWW-Authenticate', 'Basic realm="journal"');
     return res.status(401).send('Mot de passe requis.');
   }
@@ -112,6 +119,34 @@ app.get('/admin/logs', (req, res) => {
 const PLATFORMS = ['youtube', 'streaming'];
 const isVideoId = (v) => typeof v === 'string' && /^[\w-]{11}$/.test(v);
 const isTime = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+// ===================== Limites d'envoi =====================
+// Au-dela de ces limites, les messages d'une connexion sont ignores : evite
+// le spam du chat, la recherche de codes de salon par force brute et la
+// saturation du journal. [nombre max, par fenetre de X ms]
+const RATE_LIMITS = {
+  'join-room': [10, 60 * 1000],
+  join: [10, 60 * 1000], // extension
+  'chat-message': [10, 10 * 1000],
+  chat: [10, 10 * 1000], // extension
+  'diag-log': [30, 60 * 1000],
+};
+const DEFAULT_RATE_LIMIT = [100, 1000]; // large : la video envoie des rafales de candidats ICE
+
+function createRateLimiter() {
+  const windows = new Map();
+  return (event) => {
+    const [max, windowMs] = RATE_LIMITS[event] || DEFAULT_RATE_LIMIT;
+    const now = Date.now();
+    let w = windows.get(event);
+    if (!w || now - w.start > windowMs) {
+      w = { start: now, count: 0 };
+      windows.set(event, w);
+    }
+    w.count += 1;
+    return w.count <= max;
+  };
+}
 
 // ===================== Salons =====================
 // roomId -> { users: Map<clientId, { socketId, name, graceTimer }> }
@@ -150,7 +185,9 @@ io.on('connection', (socket) => {
 
   // Un handler qui plante (ex: un client qui envoie un message vide/null) ne
   // doit jamais faire tomber tout le serveur, donc tous les salons.
+  const allowed = createRateLimiter();
   const on = (event, handler) => socket.on(event, (payload) => {
+    if (!allowed(event)) return;
     const fail = (err) => console.error(`Erreur sur l'evenement "${event}":`, err);
     try {
       Promise.resolve(handler(payload || {})).catch(fail);
@@ -381,6 +418,7 @@ extWss.on('connection', (ws) => {
   // Sans ecouteur 'error', une erreur de socket ferait planter tout le serveur.
   ws.on('error', (err) => console.error('Erreur WebSocket extension:', err.message));
 
+  const allowed = createRateLimiter();
   ws.on('message', (raw) => {
     handleMessage(raw).catch((err) => console.error('Erreur message extension:', err));
   });
@@ -392,7 +430,7 @@ extWss.on('connection', (ws) => {
     } catch (e) {
       return;
     }
-    if (!msg || typeof msg !== 'object') return;
+    if (!msg || typeof msg !== 'object' || !allowed(String(msg.type))) return;
 
     if (msg.type === 'join') {
       const roomId = String(msg.roomId || '').trim().toUpperCase().slice(0, 20);
