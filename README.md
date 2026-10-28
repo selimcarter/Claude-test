@@ -46,13 +46,29 @@ Par defaut, le site utilise un serveur TURN **public et gratuit** (OpenRelay) po
 Pour une connexion plus fiable, configurez un compte TURN dedie gratuit :
 
 1. Creez un compte sur [dashboard.metered.ca/signup](https://dashboard.metered.ca/signup) (offre gratuite).
-2. Dans le tableau de bord, creez une application ("Add Application") : notez son **nom de domaine** (ex: `monapp.metered.live`) et votre **Secret API Key**.
-3. Sur Render, ouvrez votre service → **Environment** → ajoutez deux variables :
+2. Dans le tableau de bord, creez une application ("Add Application") : notez son **nom de domaine** (ex: `monapp.metered.live`).
+3. Page **TURN Server** → section **TURN Credentials** → **Add Credential**, puis **Show API Key** sur l'identifiant cree : copiez la valeur `apiKey=...` (attention : ce n'est PAS la "Secret Key" du compte, que Metered refuse ici).
+4. Sur Render, ouvrez votre service → **Environment** → ajoutez deux variables :
    - `METERED_DOMAIN` = le nom de domaine (sans le `.metered.live`, juste `monapp`)
-   - `METERED_API_KEY` = votre cle secrete
-4. Render redeploie automatiquement avec ces variables. Le site les utilise desormais a la place du TURN public, sans aucun changement de code necessaire.
+   - `METERED_API_KEY` = la cle de l'identifiant TURN (etape 3)
+5. Render redeploie automatiquement avec ces variables. Le site les utilise desormais a la place du TURN public, sans aucun changement de code necessaire.
 
 Sans ces variables, le site continue de fonctionner normalement avec le TURN public gratuit (aucune configuration n'est obligatoire).
+
+## Journal des coupures
+
+Chaque coupure (cote serveur et cote navigateur : heure, appareil, page visible ou en arriere-plan, reseau, raison de la coupure, etat de la connexion video) est enregistree. Pour le consulter :
+
+1. Sur Render → **Environment**, ajoutez une variable `ADMIN_TOKEN` avec un mot de passe de votre choix.
+2. Ouvrez `https://<votre-site>.onrender.com/admin/logs` : le navigateur demande un identifiant (n'importe lequel) et ce mot de passe.
+
+Le journal est garde en memoire : il est efface a chaque redemarrage ou mise en veille du serveur (il reste aussi visible dans l'onglet **Logs** de Render, lignes `[diag]`). Consultez-le donc juste apres une coupure.
+
+## Tests
+
+```bash
+npm test
+```
 
 ## Extension navigateur (Netflix / Prime Video)
 
