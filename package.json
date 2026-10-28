@@ -8,7 +8,7 @@
     "test": "node --test test/server.test.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.22.3",
     "socket.io": "^4.7.5",
     "ws": "^8.21.3"
   },
