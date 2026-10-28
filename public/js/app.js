@@ -24,6 +24,22 @@ const state = {
 
 const socket = io();
 
+// Identite stable de cet onglet (survit aux reconnexions et aux
+// rechargements) : le serveur rend sa place au meme participant au lieu de
+// l'annoncer comme parti puis revenu.
+const CLIENT_ID = (() => {
+  try {
+    let id = sessionStorage.getItem('watchTogetherClientId');
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem('watchTogetherClientId', id);
+    }
+    return id;
+  } catch (e) {
+    return crypto.randomUUID();
+  }
+})();
+
 // ===================== Configuration reseau WebRTC =====================
 // STUN public (Google) + TURN public de secours (OpenRelay), utilise tant que
 // le serveur n'a pas de compte TURN dedie configure (voir server.js et le
@@ -54,6 +70,33 @@ fetch('/api/ice-servers')
 
 function debugLog(...args) {
   console.debug('[watch-together]', ...args);
+}
+
+// Journal des coupures : chaque evenement (coupure, retour, page masquee,
+// reseau, etat WebRTC...) est envoye au serveur (page /admin/logs). Pendant
+// une coupure, il attend dans sessionStorage (propre a l'onglet) et part a la reconnexion.
+const DIAG_KEY = 'watchTogetherDiag';
+
+function diag(event, extra = {}) {
+  const entry = {
+    event,
+    ts: new Date().toISOString(),
+    visible: document.visibilityState,
+    online: navigator.onLine,
+    ice: [...state.peerConnections.values(), ...state.screenPeerConnections.values()]
+      .map((pc) => `${pc._kind || 'camera'}:${pc.iceConnectionState}`).join(','),
+    ...extra,
+  };
+  debugLog('[diag]', entry);
+  if (!state.roomId) return;
+  let queue = [];
+  try { queue = JSON.parse(sessionStorage.getItem(DIAG_KEY) || '[]'); } catch (e) { /* ignore */ }
+  queue = [...queue, entry].slice(-50);
+  if (socket.connected) {
+    socket.emit('diag-log', { entries: queue });
+    queue = [];
+  }
+  try { sessionStorage.setItem(DIAG_KEY, JSON.stringify(queue)); } catch (e) { /* ignore */ }
 }
 
 // ===================== Utilitaires =====================
@@ -141,74 +184,66 @@ function enterRoom(roomId, name) {
   state.roomId = roomId;
   state.myName = name;
   history.replaceState(null, '', `?room=${roomId}`);
-  socket.emit('join-room', { roomId, name });
+  // fresh : premiere entree de cette page, l'autre doit repartir de zero
+  // avec nous (on n'a encore aucune connexion video avec lui).
+  socket.emit('join-room', { roomId, name, clientId: CLIENT_ID, fresh: true });
 }
 
 // ===================== Reception des evenements de salon =====================
 
-// Le plan gratuit de Render met le serveur en veille apres inactivite : une
-// page laissee ouverte longtemps peut se retrouver deconnectee du serveur
-// sans que rien ne le signale a l'ecran (elle a l'air connectee mais ne l'est
-// plus). Socket.IO reconnecte automatiquement le transport, mais il faut
-// explicitement re-rejoindre le salon ensuite, et repartir a zero pour les
-// connexions WebRTC : apres une reconnexion, tout le monde a un nouveau
-// socket.id, donc les anciennes connexions pair-a-pair pointent vers des ID
-// qui n'existent plus.
+// Une coupure de la connexion au serveur (reseau mobile, Wi-Fi qui faiblit,
+// reveil du serveur Render...) n'interrompt PAS forcement la video, qui
+// passe en direct entre les deux appareils (WebRTC). A la reconnexion, on
+// reprend donc simplement sa place dans le salon (meme identite, voir
+// CLIENT_ID) en gardant les connexions video : on ne repare (ICE restart)
+// que celles qui sont reellement tombees, au lieu de tout reconstruire.
 let hasJoinedOnce = false;
-
-// Sur un reseau instable, la connexion peut se couper/revenir plusieurs fois
-// de suite en quelques secondes ("flapping"). Reagir a CHAQUE reconnexion en
-// reconstruisant tout (WebRTC, video) rend ce flapping tres visible et
-// perturbateur. On attend plutot que la connexion soit stable un court
-// instant avant d'agir ; un nouveau decrochage pendant l'attente annule
-// l'action prevue.
-let reconnectDebounceTimer = null;
 
 socket.on('connect', () => {
   if (!hasJoinedOnce || !state.roomId) return;
-  clearTimeout(reconnectDebounceTimer);
-  reconnectDebounceTimer = setTimeout(() => {
-    debugLog('Connexion stabilisee : on rejoint a nouveau le salon.');
-    showToast(t('status.reconnected'), 3000);
-
-    state.peerConnections.forEach((pc) => pc.close());
-    state.peerConnections.clear();
-    state.screenPeerConnections.forEach((pc) => pc.close());
-    state.screenPeerConnections.clear();
-    clearVideoElement(remoteVideo);
-    cameraWidget.classList.add('no-remote');
-
-    // Si on est soi-meme en train de partager son ecran, ce flux local reste
-    // actif malgre la coupure reseau (il n'a pas ete arrete) : on ne l'efface
-    // donc pas ici, on le rebranchera vers les pairs juste apres avoir rejoint
-    // le salon (voir socket.on('joined', ...)) plutot que de laisser l'autre
-    // personne avec un ecran fige sans aucun signal d'arret explicite.
-    if (!state.screenStream) clearScreenViewer();
-
-    socket.emit('join-room', { roomId: state.roomId, name: state.myName });
-  }, 1500);
+  socket.emit('join-room', { roomId: state.roomId, name: state.myName, clientId: CLIENT_ID, fresh: false });
+  diag('reconnexion-serveur');
 });
 
-socket.on('disconnect', () => {
+socket.on('disconnect', (reason) => {
   if (!hasJoinedOnce) return;
-  clearTimeout(reconnectDebounceTimer);
-  showToast(t('status.disconnected'), 5000);
+  diag('coupure-serveur', { reason });
+  selfOffline = true;
+  renderBanner();
 });
 
 socket.on('room-full', () => {
+  selfOffline = false;
+  renderBanner();
   showToast(t('status.roomFull'));
 });
 
-socket.on('joined', ({ self, peers }) => {
+socket.on('joined', ({ self, peers, reset }) => {
+  const rejoin = hasJoinedOnce;
   hasJoinedOnce = true;
+  selfOffline = false;
+  renderBanner();
   state.myId = self.id;
   landing.classList.add('hidden');
   appScreen.classList.remove('hidden');
   document.getElementById('room-code-display').textContent = state.roomId;
   renderPresence([self, ...peers]);
+  keepScreenOn();
+  diag(rejoin ? 'retour-dans-le-salon' : 'entree-dans-le-salon');
+
+  // reset : l'autre cote repart de zero avec nous (il a recu peer-joined),
+  // nos anciennes connexions video ne lui correspondent plus. Sinon, on ne
+  // retire que les pairs partis definitivement pendant notre absence.
+  const peerIds = new Set(peers.map((p) => p.id));
+  [...state.peerConnections.keys(), ...state.screenPeerConnections.keys()]
+    .filter((id) => reset || !peerIds.has(id))
+    .forEach(dropPeer);
 
   initMedia().then(() => {
-    peers.forEach((p) => connectToPeer(p.id));
+    peers.forEach((p) => {
+      connectToPeer(p.id);
+      resyncPeer(p.id);
+    });
   });
 
   // Reconnexion pendant un partage d'ecran actif : le flux local est toujours
@@ -224,6 +259,11 @@ socket.on('joined', ({ self, peers }) => {
 
 socket.on('peer-joined', ({ id, name }) => {
   showToast(t('status.peerJoined', { name }));
+  // Meme identite qu'un pair deja connu = il a recharge sa page : ses
+  // anciennes connexions video n'existent plus de son cote.
+  dropPeer(id);
+  reconnectingPeers.delete(id);
+  renderBanner();
   connectToPeer(id);
   if (state.screenStream) {
     connectScreenToPeer(id);
@@ -235,15 +275,43 @@ socket.on('peer-joined', ({ id, name }) => {
   socket.emit('platform-select', { platform: state.currentPlatform });
 });
 
-socket.on('peer-left', ({ id }) => {
+// Ne touche qu'aux connexions de CE pair : un depart inconnu (ex: une
+// personne refusee car salon complet) ne doit rien couper.
+function dropPeer(id) {
   const pc = state.peerConnections.get(id);
-  if (pc) { pc.close(); state.peerConnections.delete(id); }
-  clearVideoElement(document.getElementById('remote-video'));
-  document.getElementById('camera-widget').classList.add('no-remote');
-
+  if (pc) {
+    pc.close();
+    state.peerConnections.delete(id);
+    clearVideoElement(remoteVideo);
+    cameraWidget.classList.add('no-remote');
+  }
   const screenPc = state.screenPeerConnections.get(id);
-  if (screenPc) { screenPc.close(); state.screenPeerConnections.delete(id); }
-  clearScreenViewer();
+  if (screenPc) {
+    screenPc.close();
+    state.screenPeerConnections.delete(id);
+    // Notre propre partage continue : seul le spectateur efface sa vue.
+    if (!state.screenStream) clearScreenViewer();
+  }
+}
+
+socket.on('peer-left', ({ id }) => {
+  reconnectingPeers.delete(id);
+  renderBanner();
+  dropPeer(id);
+});
+
+socket.on('peer-reconnecting', ({ id }) => {
+  const user = lastPresenceUsers.find((u) => u.id === id);
+  reconnectingPeers.set(id, user ? user.name : '');
+  renderBanner();
+  diag('autre-en-coupure');
+});
+
+socket.on('peer-reconnected', ({ id }) => {
+  reconnectingPeers.delete(id);
+  renderBanner();
+  resyncPeer(id);
+  diag('autre-revenu');
 });
 
 socket.on('room-users', (users) => renderPresence(users));
@@ -553,6 +621,7 @@ async function initMedia() {
   try {
     state.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     state.localStream.getAudioTracks().forEach((track) => { track.enabled = state.micOn; }); // micro coupe par defaut
+    watchLocalTracks();
     localVideo.muted = true; // obligatoire pour l'autoplay du flux local
     attachStream(localVideo, state.localStream);
 
@@ -564,6 +633,49 @@ async function initMedia() {
   } catch (err) {
     showToast(mediaErrorMessage(err, t('media.whatCameraMic')), 6000);
   }
+}
+
+// Android peut arreter la camera/le micro (page en arriere-plan, autre appli
+// qui prend la camera...) : la piste passe alors a 'ended' et l'autre ne voit
+// plus qu'une image figee. On la relance des que la page est visible.
+function watchLocalTracks() {
+  state.localStream.getTracks().forEach((track) => {
+    track.addEventListener('ended', () => {
+      diag('camera-coupee', { kind: track.kind });
+      ensureCameraAlive();
+    });
+  });
+}
+
+async function ensureCameraAlive() {
+  const stream = state.localStream;
+  if (!stream || document.visibilityState !== 'visible') return; // getUserMedia exige une page visible
+  if (!stream.getTracks().some((track) => track.readyState === 'ended')) return;
+  let fresh;
+  try {
+    fresh = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  } catch (err) {
+    showToast(mediaErrorMessage(err, t('media.whatCameraMic')), 6000);
+    return;
+  }
+  if (state.localStream !== stream) { // remplace entre-temps par un autre appel
+    fresh.getTracks().forEach((track) => track.stop());
+    return;
+  }
+  fresh.getVideoTracks().forEach((track) => { track.enabled = state.camOn; });
+  fresh.getAudioTracks().forEach((track) => { track.enabled = state.micOn; });
+  // replaceTrack : bascule sur la nouvelle piste sans renegocier la connexion.
+  state.peerConnections.forEach((pc) => {
+    pc.getSenders().forEach((sender) => {
+      const next = sender.track && fresh.getTracks().find((track) => track.kind === sender.track.kind);
+      if (next) sender.replaceTrack(next).catch((e) => debugLog('replaceTrack refuse', e));
+    });
+  });
+  stream.getTracks().forEach((track) => track.stop());
+  state.localStream = fresh;
+  watchLocalTracks();
+  attachStream(localVideo, fresh);
+  diag('camera-relancee');
 }
 
 function addLocalTracksToPeer(pc) {
@@ -584,6 +696,8 @@ function createPeerConnection(peerId, { kind, onTrack } = {}) {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   const polite = state.myId > peerId;
   let makingOffer = false;
+  let disconnectedTimer = null;
+  pc._kind = kind;
   pc._polite = polite;
   pc._ignoreOffer = false;
   pc._makingOffer = () => makingOffer;
@@ -608,10 +722,19 @@ function createPeerConnection(peerId, { kind, onTrack } = {}) {
   };
 
   pc.oniceconnectionstatechange = () => {
-    debugLog(`[${kind || 'camera'}] iceConnectionState(${peerId}) =`, pc.iceConnectionState);
-    if (pc.iceConnectionState === 'failed' && typeof pc.restartIce === 'function') {
-      debugLog(`[${kind || 'camera'}] tentative de restartIce apres echec`, peerId);
+    const iceState = pc.iceConnectionState;
+    debugLog(`[${kind || 'camera'}] iceConnectionState(${peerId}) =`, iceState);
+    if (['connected', 'disconnected', 'failed'].includes(iceState)) diag(`video-${iceState}`, { kind: kind || 'camera' });
+    clearTimeout(disconnectedTimer);
+    if (typeof pc.restartIce !== 'function') return;
+    if (iceState === 'failed') {
       pc.restartIce();
+    } else if (iceState === 'disconnected') {
+      // 'disconnected' se resorbe souvent seul (micro-coupure) : on ne
+      // relance la connexion que s'il dure.
+      disconnectedTimer = setTimeout(() => {
+        if (pc.iceConnectionState === 'disconnected') pc.restartIce();
+      }, 4000);
     }
   };
   pc.onconnectionstatechange = () => debugLog(`[${kind || 'camera'}] connectionState(${peerId}) =`, pc.connectionState);
@@ -651,6 +774,20 @@ async function applyIncomingSignal(pc, peerId, signal) {
       if (!pc._ignoreOffer) debugLog('Erreur addIceCandidate', peerId, e);
     }
   }
+}
+
+// Apres une coupure de la connexion au serveur : renvoie une offre restee
+// sans reponse (perdue pendant la coupure, sinon la negociation reste
+// bloquee) ou relance ICE si le lien video lui-meme est tombe.
+function resyncPeer(peerId) {
+  [state.peerConnections.get(peerId), state.screenPeerConnections.get(peerId)].forEach((pc) => {
+    if (!pc) return;
+    if (pc.signalingState === 'have-local-offer' && pc.localDescription) {
+      socket.emit('webrtc-signal', { to: peerId, signal: { sdp: pc.localDescription, kind: pc._kind } });
+    } else if (['disconnected', 'failed'].includes(pc.iceConnectionState) && typeof pc.restartIce === 'function') {
+      pc.restartIce();
+    }
+  });
 }
 
 function connectToPeer(peerId) {
@@ -1269,6 +1406,75 @@ document.addEventListener('keydown', (e) => {
   });
 })();
 
+// ===================== Coupures : bandeau, ecran allume, retour au premier plan =====================
+// Bandeau visible pendant une coupure, au lieu d'une image figee sans
+// explication : la notre ("Reconnexion en cours") ou celle de l'autre.
+const connBanner = document.getElementById('conn-banner');
+let selfOffline = false;
+const reconnectingPeers = new Map(); // id -> prenom
+
+function renderBanner() {
+  let text = '';
+  if (selfOffline) {
+    text = t('status.reconnecting');
+    if (matchMedia('(pointer: coarse)').matches) text += ` ${t('status.keepScreenOn')}`;
+  } else if (reconnectingPeers.size > 0) {
+    text = t('status.peerReconnecting', { name: [...reconnectingPeers.values()][0] });
+  }
+  connBanner.textContent = text;
+  connBanner.classList.toggle('hidden', !text);
+}
+
+// Empeche la mise en veille de l'ecran pendant une seance : un telephone
+// verrouille gele la page, qui ne repond plus au serveur et coupe la
+// camera. Le verrou saute quand la page est masquee : on le redemande au
+// retour (voir onPageBack).
+let wakeLock = null;
+
+async function keepScreenOn() {
+  if (!hasJoinedOnce || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  if (wakeLock && !wakeLock.released) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => diag('ecran-veille-autorisee'));
+  } catch (err) {
+    diag('ecran-allume-refuse', { msg: err.message });
+  }
+}
+
+// Retour au premier plan (deverrouillage, retour dans l'appli, reseau
+// revenu...) : on verifie tout sans recharger la page.
+function onPageBack() {
+  if (!hasJoinedOnce) return;
+  if (!socket.connected) socket.connect(); // n'attend pas la prochaine tentative automatique
+  keepScreenOn();
+  ensureCameraAlive();
+  state.peerConnections.forEach((_, id) => resyncPeer(id));
+}
+
+document.addEventListener('visibilitychange', () => {
+  const visible = document.visibilityState === 'visible';
+  diag(visible ? 'page-visible' : 'page-masquee');
+  if (visible) onPageBack();
+});
+document.addEventListener('freeze', () => diag('page-gelee'));
+document.addEventListener('resume', () => {
+  diag('page-degelee');
+  onPageBack();
+});
+window.addEventListener('pageshow', (e) => { if (e.persisted) onPageBack(); });
+window.addEventListener('online', () => {
+  diag('reseau-revenu');
+  onPageBack();
+});
+window.addEventListener('offline', () => diag('reseau-perdu'));
+
+// Fermeture de l'onglet : on previent le serveur pour que l'autre voie le
+// depart tout de suite, plutot qu'apres le delai de grace.
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted && hasJoinedOnce) socket.emit('leave-room');
+});
+
 // ===================== Changement de langue en cours de session =====================
 // applyStaticTranslations() (voir i18n.js) couvre tout le texte statique via
 // data-i18n-*, mais certains textes sont fixes dynamiquement par ce fichier
@@ -1284,6 +1490,7 @@ document.addEventListener('watchtogether-languagechange', () => {
   });
 
   if (lastPresenceUsers.length > 0) renderPresence(lastPresenceUsers);
+  renderBanner();
 
   if (params.get('room') && savedName) {
     document.getElementById('join-room-btn').textContent = t('landing.joinAs', { name: savedName });

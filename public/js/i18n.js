@@ -72,8 +72,9 @@ const TRANSLATIONS = {
 
     'presence.you': '(vous)',
 
-    'status.reconnected': 'Connexion retablie, on se reconnecte au salon...',
-    'status.disconnected': 'Connexion au serveur perdue, reconnexion en cours...',
+    'status.reconnecting': 'Connexion perdue, reconnexion en cours...',
+    'status.keepScreenOn': "Gardez l'ecran allume.",
+    'status.peerReconnecting': '{name} a perdu la connexion, reconnexion en cours...',
     'status.roomFull': 'Ce salon est deja complet (2 personnes max).',
     'status.peerJoined': '{name} a rejoint le salon.',
     'status.linkCopied': 'Lien copie !',
@@ -154,8 +155,9 @@ const TRANSLATIONS = {
 
     'presence.you': '(aap)',
 
-    'status.reconnected': 'Connection wapas aa gayi, room se dobara jud rahe hain...',
-    'status.disconnected': 'Server se connection toot gayi, dobara jud rahe hain...',
+    'status.reconnecting': 'Connection toot gayi, dobara jud rahe hain...',
+    'status.keepScreenOn': 'Screen on rakhein.',
+    'status.peerReconnecting': '{name} ki connection toot gayi, dobara jud rahe hain...',
     'status.roomFull': 'Yeh room pehle se bhara hua hai (zyada se zyada 2 log).',
     'status.peerJoined': '{name} room mein shamil ho gaye.',
     'status.linkCopied': 'Link copy ho gaya!',
