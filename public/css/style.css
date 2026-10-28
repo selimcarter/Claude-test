@@ -370,12 +370,13 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
    reseaux (mobile/longue distance), le son du partage d'ecran arrive avant
    l'image. Plutot que de deviner un reglage reseau unique qui marche pour
    tout le monde, on laisse la personne qui regarde retarder le son jusqu'a
-   ce que ca corresponde a l'image, chez elle. Place a l'oppose du
-   screen-stats-overlay (bas-gauche) pour ne pas se superposer. */
+   ce que ca corresponde a l'image, chez elle. Place en haut-gauche : le bas
+   est pris par le screen-stats-overlay (qui le chevauchait sur mobile) et
+   par la bulle camera, le haut-droit par le bouton plein ecran. */
 .audio-delay-control {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  top: 8px;
+  left: 8px;
   z-index: 6;
   display: flex;
   align-items: center;
@@ -403,6 +404,15 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 }
 
 .audio-delay-control button:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* Ecran tactile : 22px est trop petit pour viser au doigt. Le libelle cede
+   sa place a une icone, sinon le reglage passe sous le bouton plein ecran. */
+@media (pointer: coarse) {
+  .audio-delay-control { gap: 8px; font-size: 13px; }
+  .audio-delay-label { font-size: 0; }
+  .audio-delay-label::before { content: '🔊'; font-size: 16px; }
+  .audio-delay-control button { width: 36px; height: 36px; font-size: 18px; }
+}
 
 #audio-delay-value {
   min-width: 34px;
