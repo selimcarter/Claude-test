@@ -916,12 +916,10 @@ async function startScreenShare(platform) {
     return;
   }
   try {
-    // Resolution/frequence limitees : le relais TURN public gratuit a une
-    // bande passante restreinte (partagee entre des milliers d'utilisateurs) ;
-    // un partage plein ecran/HD non contraint sature vite ce relais et
-    // provoque des saccades. 720p/15fps reste largement lisible.
+    // 720p (1080p a deja ete essaye : trop lourd pour la connexion) a 24 images
+    // par seconde, la cadence d'un film (15 saccadait).
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15, max: 20 } },
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
       audio: true,
     });
   } catch (e) {
@@ -931,7 +929,11 @@ async function startScreenShare(platform) {
     return;
   }
   setShareButtonsState(true);
-  state.screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
+  const screenTrack = state.screenStream.getVideoTracks()[0];
+  // Indique a l'encodeur qu'il s'agit d'un film (mouvement) et non de texte :
+  // il privilegie alors la fluidite plutot que la nettete d'une image fixe.
+  if ('contentHint' in screenTrack) screenTrack.contentHint = 'motion';
+  screenTrack.addEventListener('ended', stopScreenShare);
 
   // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
   // sans repasser sur l'onglet d'origine (Netflix, Prime, etc.).
@@ -961,9 +963,10 @@ function connectScreenToPeer(peerId) {
   return pc;
 }
 
-// Plafonne le debit encode (independamment de la resolution demandee) : sur
-// un relais TURN a bande passante limitee, un debit trop eleve fait plus de
-// mal (paquets perdus, saccades) qu'une image un peu moins nette.
+// Plafonne le debit encode. Ce n'est qu'un maximum : le controle de congestion
+// de WebRTC descend tout seul en dessous si la connexion ne suit pas. 1,5 Mbps
+// suffit pour du 720p confortable (700 kbps bridait l'image meme sur une bonne
+// connexion) ; ~0,7 Go/h maximum sur le quota du relais Metered.
 //
 // degradationPreference='maintain-framerate' : sur une connexion dont le
 // debit reellement disponible est tres en dessous du plafond ci-dessus (ex:
@@ -975,7 +978,7 @@ function connectScreenToPeer(peerId) {
 // decalage audio/video signale sur un lien longue distance/mobile contraint.
 // Ce reglage force plutot une baisse de resolution immediate et automatique
 // pour rester fluide et en temps reel, quitte a etre moins net.
-function limitVideoBitrate(sender, maxBitrate = 700000) {
+function limitVideoBitrate(sender, maxBitrate = 1500000) {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
