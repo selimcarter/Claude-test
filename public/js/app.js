@@ -1027,6 +1027,13 @@ document.getElementById('audio-delay-minus').addEventListener('click', () => set
 document.getElementById('audio-delay-plus').addEventListener('click', () => setAudioDelayMs(state.audioDelayMs + AUDIO_DELAY_STEP_MS));
 document.getElementById('audio-delay-reset').addEventListener('click', () => setAudioDelayMs(0));
 
+// Bouton 🔊 : deplie / replie le reste du reglage.
+const audioDelayToggle = document.getElementById('audio-delay-toggle');
+audioDelayToggle.addEventListener('click', () => {
+  const open = document.getElementById('audio-delay-control').classList.toggle('open');
+  audioDelayToggle.setAttribute('aria-expanded', String(open));
+});
+
 function teardownRemoteAudioDelay() {
   if (state.screenAudioCtx) {
     state.screenAudioCtx.close().catch(() => {});

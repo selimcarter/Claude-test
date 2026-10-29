@@ -370,17 +370,14 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
    reseaux (mobile/longue distance), le son du partage d'ecran arrive avant
    l'image. Plutot que de deviner un reglage reseau unique qui marche pour
    tout le monde, on laisse la personne qui regarde retarder le son jusqu'a
-   ce que ca corresponde a l'image, chez elle. Place en haut-gauche : le bas
-   est pris par le screen-stats-overlay (qui le chevauchait sur mobile) et
-   par la bulle camera, le haut-droit par le bouton plein ecran. */
+   ce que ca corresponde a l'image, chez elle. Place juste au-dessus du
+   lecteur (jamais par-dessus la video) ; le bouton 🔊 deplie le reste vers
+   la droite et le replie. */
 .audio-delay-control {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 6;
   display: flex;
   align-items: center;
-  gap: 6px;
+  width: fit-content;
+  margin-bottom: 8px;
   background: rgba(10, 11, 16, 0.65);
   color: #fff;
   padding: 4px 6px;
@@ -388,11 +385,9 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   font-size: 11px;
 }
 
-.audio-delay-label { white-space: nowrap; }
-
 .audio-delay-control button {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -405,13 +400,40 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 
 .audio-delay-control button:hover { background: rgba(255, 255, 255, 0.2); }
 
-/* Ecran tactile : 22px est trop petit pour viser au doigt. Le libelle cede
-   sa place a une icone, sinon le reglage passe sous le bouton plein ecran. */
+.audio-delay-control .audio-delay-toggle { font-size: 15px; }
+
+/* Replie : largeur nulle et invisible (donc aussi hors de la navigation au
+   clavier). Deplie : le panneau "glisse" vers la droite. */
+.audio-delay-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: max-width 0.25s ease, opacity 0.2s ease, margin-left 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.audio-delay-control.open .audio-delay-panel {
+  max-width: 240px;
+  opacity: 1;
+  margin-left: 6px;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-delay-panel { transition: none; }
+}
+
+/* Ecran tactile : boutons assez grands pour viser au doigt. */
 @media (pointer: coarse) {
-  .audio-delay-control { gap: 8px; font-size: 13px; }
-  .audio-delay-label { font-size: 0; }
-  .audio-delay-label::before { content: '🔊'; font-size: 16px; }
+  .audio-delay-control { font-size: 13px; }
+  .audio-delay-panel { gap: 8px; }
+  .audio-delay-control.open .audio-delay-panel { margin-left: 8px; }
   .audio-delay-control button { width: 36px; height: 36px; font-size: 18px; }
+  .audio-delay-control .audio-delay-toggle { font-size: 20px; }
 }
 
 #audio-delay-value {
