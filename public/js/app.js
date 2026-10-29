@@ -964,17 +964,17 @@ function connectScreenToPeer(peerId) {
 }
 
 // Plafonne le debit encode. Ce n'est qu'un maximum : le controle de congestion
-// de WebRTC descend tout seul en dessous si la connexion ne suit pas. 1,5 Mbps
-// suffit pour du 720p confortable (700 kbps bridait l'image meme sur une bonne
-// connexion) ; ~0,7 Go/h maximum sur le quota du relais Metered.
+// de WebRTC descend tout seul en dessous si la connexion ne suit pas. Mesure :
+// a 1,5 Mbps une scene chargee (changement de scene, saut dans le film) faisait
+// sauter la plupart des images ; 2,5 Mbps laisse de la marge. ~1,1 Go/h maximum
+// sur le quota Metered, et seulement quand la connexion passe par le relais.
 //
 // degradationPreference='maintain-resolution' : mesure faite, 'maintain-framerate'
 // demarrait en 320x180/480x270 et mettait ~25 s a remonter (voire restait
 // bloque en 300x138 en usage reel, image floue), alors que celui-ci tient
-// 1280x720 des la premiere seconde. Sur une connexion trop faible pour du 720p,
-// il baisse plutot le nombre d'images : le repli automatique vers
-// 'maintain-framerate' est fait dans startScreenStatsOverlay.
-function limitVideoBitrate(sender, maxBitrate = 1500000, degradationPreference = 'maintain-resolution') {
+// 1280x720 des la premiere seconde. Sur une connexion vraiment trop faible, le
+// repli vers 'maintain-framerate' est fait dans startScreenStatsOverlay.
+function limitVideoBitrate(sender, maxBitrate = 2500000, degradationPreference = 'maintain-resolution') {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
@@ -1116,7 +1116,8 @@ function stopScreenStatsOverlay() {
 function startScreenStatsOverlay(pc, isRemote) {
   stopScreenStatsOverlay();
   const rtpType = isRemote ? 'inbound-rtp' : 'outbound-rtp';
-  let droppingSamples = 0;
+  let lowNetworkSamples = 0;
+  let goodNetworkSamples = 0;
   let preferFramerate = false;
 
   const update = async () => {
@@ -1137,18 +1138,25 @@ function startScreenStatsOverlay(pc, isRemote) {
     });
     if (!rtp) return;
 
-    // Repli si la connexion est trop faible pour du 720p : la capture produit
-    // des images mais l'encodeur en envoie moins de la moitie (image saccadee)
-    // pendant 6 s -> on privilegie la fluidite (resolution plus basse). Un film
-    // en pause ne declenche rien : la capture ne produit alors presque plus
-    // d'images.
-    if (!isRemote && !preferFramerate && source && source.framesPerSecond >= 15) {
-      droppingSamples = rtp.framesPerSecond < source.framesPerSecond / 2 ? droppingSamples + 1 : 0;
-      if (droppingSamples >= 3) {
-        preferFramerate = true;
+    const pair = candidatePairId && report.get(candidatePairId);
+
+    // Repli selon la vitesse REELLE du reseau (estimee par le navigateur), pas
+    // selon les images sautees : une scene chargee ou un saut dans le film en
+    // fait sauter quelques-unes meme sur une tres bonne connexion, et l'ancien
+    // repli s'y declenchait a tort puis restait bloque en 300x138. Ici :
+    // connexion < 0,8 Mbps pendant 10 s -> fluidite (resolution plus basse) ;
+    // revenue > 1,5 Mbps pendant 10 s -> retour a la pleine resolution.
+    const available = pair && pair.availableOutgoingBitrate;
+    if (!isRemote && typeof available === 'number') {
+      lowNetworkSamples = available < 800000 ? lowNetworkSamples + 1 : 0;
+      goodNetworkSamples = available > 1500000 ? goodNetworkSamples + 1 : 0;
+      const switchTo = !preferFramerate && lowNetworkSamples >= 5 ? true
+        : preferFramerate && goodNetworkSamples >= 5 ? false : null;
+      if (switchTo !== null) {
+        preferFramerate = switchTo;
         const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-        if (sender) limitVideoBitrate(sender, undefined, 'maintain-framerate');
-        diag('partage-fluidite-privilegiee', { capture: source.framesPerSecond, envoi: rtp.framesPerSecond });
+        if (sender) limitVideoBitrate(sender, undefined, switchTo ? 'maintain-framerate' : 'maintain-resolution');
+        diag(switchTo ? 'partage-fluidite-privilegiee' : 'partage-pleine-resolution', { reseauKbps: Math.round(available / 1000) });
       }
     }
 
@@ -1158,7 +1166,6 @@ function startScreenStatsOverlay(pc, isRemote) {
     }
 
     let relay = '';
-    const pair = candidatePairId && report.get(candidatePairId);
     const localCandidate = pair && pair.localCandidateId && report.get(pair.localCandidateId);
     if (localCandidate) relay = localCandidate.candidateType === 'relay' ? 'relais TURN' : 'direct';
 
@@ -1182,7 +1189,15 @@ function startScreenStatsOverlay(pc, isRemote) {
       : '';
 
     const res = rtp.frameWidth && rtp.frameHeight ? `${rtp.frameWidth}x${rtp.frameHeight}` : '';
-    const text = [res, bitrateText, codecName.toUpperCase(), relay, limitReason].filter(Boolean).join(' · ');
+    // Images/s, et cote partageur la taille capturee par Chrome : distingue une
+    // capture qui retrecit (Chrome) d'un encodeur qui reduit (reglage/reseau).
+    let fps = typeof rtp.framesPerSecond === 'number' ? `${rtp.framesPerSecond} img/s` : '';
+    let capture = '';
+    if (!isRemote && source) {
+      if (source.width && source.height) capture = `capture ${source.width}x${source.height}`;
+      if (typeof source.framesPerSecond === 'number') fps = `${source.framesPerSecond}→${rtp.framesPerSecond || 0} img/s`;
+    }
+    const text = [res, bitrateText, codecName.toUpperCase(), relay, fps, capture, limitReason].filter(Boolean).join(' · ');
 
     const el = document.getElementById('screen-stats-streaming');
     if (el) { el.textContent = text; el.classList.remove('hidden'); }
