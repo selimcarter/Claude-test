@@ -968,21 +968,17 @@ function connectScreenToPeer(peerId) {
 // suffit pour du 720p confortable (700 kbps bridait l'image meme sur une bonne
 // connexion) ; ~0,7 Go/h maximum sur le quota du relais Metered.
 //
-// degradationPreference='maintain-framerate' : sur une connexion dont le
-// debit reellement disponible est tres en dessous du plafond ci-dessus (ex:
-// longue distance, mesure a peine ~0.1 Mbps reel sur certains liens), sans ce
-// reglage l'encodeur peut continuer a viser une resolution trop elevee pour
-// ce qui passe reellement, ce qui fait s'accumuler un retard CROISSANT cote
-// video (l'image prend un retard qui grandit avec le temps) pendant que
-// l'audio, bien plus leger, reste lui a peu pres en temps reel - c'est le
-// decalage audio/video signale sur un lien longue distance/mobile contraint.
-// Ce reglage force plutot une baisse de resolution immediate et automatique
-// pour rester fluide et en temps reel, quitte a etre moins net.
-function limitVideoBitrate(sender, maxBitrate = 1500000) {
+// degradationPreference='maintain-resolution' : mesure faite, 'maintain-framerate'
+// demarrait en 320x180/480x270 et mettait ~25 s a remonter (voire restait
+// bloque en 300x138 en usage reel, image floue), alors que celui-ci tient
+// 1280x720 des la premiere seconde. Sur une connexion trop faible pour du 720p,
+// il baisse plutot le nombre d'images : le repli automatique vers
+// 'maintain-framerate' est fait dans startScreenStatsOverlay.
+function limitVideoBitrate(sender, maxBitrate = 1500000, degradationPreference = 'maintain-resolution') {
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
   params.encodings[0].maxBitrate = maxBitrate;
-  params.degradationPreference = 'maintain-framerate';
+  params.degradationPreference = degradationPreference;
   sender.setParameters(params).catch((e) => debugLog('setParameters (bitrate) refuse', e));
 }
 
@@ -1120,6 +1116,8 @@ function stopScreenStatsOverlay() {
 function startScreenStatsOverlay(pc, isRemote) {
   stopScreenStatsOverlay();
   const rtpType = isRemote ? 'inbound-rtp' : 'outbound-rtp';
+  let droppingSamples = 0;
+  let preferFramerate = false;
 
   const update = async () => {
     let report;
@@ -1130,12 +1128,29 @@ function startScreenStatsOverlay(pc, isRemote) {
     }
 
     let rtp = null;
+    let source = null;
     let candidatePairId = null;
     report.forEach((stat) => {
       if (stat.type === rtpType && stat.kind === 'video') rtp = stat;
+      if (stat.type === 'media-source' && stat.kind === 'video') source = stat;
       if (stat.type === 'transport' && stat.selectedCandidatePairId) candidatePairId = stat.selectedCandidatePairId;
     });
     if (!rtp) return;
+
+    // Repli si la connexion est trop faible pour du 720p : la capture produit
+    // des images mais l'encodeur en envoie moins de la moitie (image saccadee)
+    // pendant 6 s -> on privilegie la fluidite (resolution plus basse). Un film
+    // en pause ne declenche rien : la capture ne produit alors presque plus
+    // d'images.
+    if (!isRemote && !preferFramerate && source && source.framesPerSecond >= 15) {
+      droppingSamples = rtp.framesPerSecond < source.framesPerSecond / 2 ? droppingSamples + 1 : 0;
+      if (droppingSamples >= 3) {
+        preferFramerate = true;
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (sender) limitVideoBitrate(sender, undefined, 'maintain-framerate');
+        diag('partage-fluidite-privilegiee', { capture: source.framesPerSecond, envoi: rtp.framesPerSecond });
+      }
+    }
 
     let codecName = '';
     if (rtp.codecId && report.get(rtp.codecId)) {
