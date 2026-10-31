@@ -231,6 +231,7 @@ socket.on('joined', ({ self, peers, reset, iceServers, serverTime }) => {
   appScreen.classList.remove('hidden');
   document.getElementById('room-code-display').textContent = state.roomId;
   renderPresence([self, ...peers]);
+  restoreChatHistory();
   keepScreenOn();
   diag(rejoin ? 'retour-dans-le-salon' : 'entree-dans-le-salon');
 
@@ -416,9 +417,9 @@ chatToggleBtn.addEventListener('click', () => setChatCollapsed(false));
 // l'arrivee dans le salon.
 if (window.innerWidth <= 860) setChatCollapsed(true);
 
-socket.on('chat-message', ({ from, fromId, text, ts }) => {
+function renderChatMessage({ from, text, ts }, self) {
   const div = document.createElement('div');
-  div.className = 'chat-msg' + (fromId === state.myId ? ' self' : '');
+  div.className = 'chat-msg' + (self ? ' self' : '');
   const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // "from" est un nom choisi par l'autre personne : il doit etre echappe au
   // meme titre que le texte du message (voir escapeHtml plus bas), sinon un
@@ -426,10 +427,34 @@ socket.on('chat-message', ({ from, fromId, text, ts }) => {
   div.innerHTML = `<span class="meta">${escapeHtml(from)} - ${time}</span>${escapeHtml(text)}`;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Historique du chat garde sur l'appareil (100 derniers messages par salon) :
+// il reapparait apres un rechargement ou la reouverture de l'appli.
+const CHAT_HISTORY_MAX = 100;
+const chatHistoryKey = () => `watchTogetherChat:${state.roomId}`;
+let chatHistoryRestored = false;
+
+function restoreChatHistory() {
+  if (chatHistoryRestored) return; // une seule fois par page (pas a chaque reconnexion)
+  chatHistoryRestored = true;
+  try {
+    JSON.parse(localStorage.getItem(chatHistoryKey()) || '[]').forEach((m) => renderChatMessage(m, m.self));
+  } catch (e) { /* historique illisible : on repart a vide */ }
+}
+
+socket.on('chat-message', (msg) => {
+  const self = msg.fromId === state.myId;
+  renderChatMessage(msg, self);
+  try {
+    const history = JSON.parse(localStorage.getItem(chatHistoryKey()) || '[]');
+    history.push({ from: msg.from, text: msg.text, ts: msg.ts, self });
+    localStorage.setItem(chatHistoryKey(), JSON.stringify(history.slice(-CHAT_HISTORY_MAX)));
+  } catch (e) { /* stockage plein ou bloque : le chat marche quand meme */ }
 
   // Notification en coin pour les messages recus : visible meme si le chat
   // est replie, ou si on regarde la video en plein ecran.
-  if (fromId !== state.myId) showChatPopup(from, text);
+  if (!self) showChatPopup(msg.from, msg.text);
 });
 
 function showChatPopup(from, text) {
