@@ -206,3 +206,9 @@ test('extension : entree dans le salon avec la config du relais, heartbeat accep
   assert.ok(Array.isArray(msg.iceServers) && msg.iceServers.length > 0);
   ws.close();
 });
+
+test('le serveur annonce sa version a chaque connexion', async () => {
+  const s = connect();
+  const version = await once(s, 'server-version');
+  assert.strictEqual(typeof version, 'string');
+});

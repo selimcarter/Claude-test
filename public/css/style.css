@@ -822,6 +822,38 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
+/* Proposition de recharger quand une nouvelle version est en ligne. */
+.update-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  z-index: 2001; /* au-dessus du plein ecran CSS */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.update-banner button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #fff;
+  background: var(--accent-gradient);
+}
+
+.update-banner .update-dismiss { padding: 6px 10px; background: transparent; color: var(--text-dim); }
+
 /* Bandeau persistant pendant une coupure (le toast, lui, disparait seul). */
 .conn-banner {
   position: fixed;

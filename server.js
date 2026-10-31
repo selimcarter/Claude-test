@@ -213,7 +213,13 @@ function removeUser(roomId, clientId) {
   if (room.users.size === 0) rooms.delete(roomId);
 }
 
+// Version deployee (commit Git fourni par Render) : envoyee a chaque connexion,
+// le navigateur propose de recharger quand elle change (mise a jour en ligne).
+// Stable entre deux mises en veille du serveur, contrairement a une date.
+const APP_VERSION = process.env.RENDER_GIT_COMMIT || 'dev';
+
 io.on('connection', (socket) => {
+  socket.emit('server-version', APP_VERSION);
   let currentRoom = null;
   let clientId = null;
   const ua = String(socket.handshake.headers['user-agent'] || '').slice(0, 200);
