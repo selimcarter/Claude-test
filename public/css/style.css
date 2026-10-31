@@ -160,7 +160,8 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 /* Bouton de bascule FR / ourdou phonetique. Sur la landing page il flotte en
    coin (la carte a deja position:relative) ; dans la barre du haut, il suit
    simplement le fil normal du flex apres la presence (dernier a droite). */
-.lang-toggle-btn {
+.lang-toggle-btn,
+.refresh-btn {
   font-size: 12px;
   padding: 6px 10px;
   white-space: nowrap;

@@ -1514,6 +1514,12 @@ socket.on('server-version', (version) => {
   else if (version !== loadedVersion) updateBanner.classList.remove('hidden');
 });
 document.getElementById('update-reload-btn').addEventListener('click', () => location.reload());
+
+// Appli installee (ecran d'accueil / appli Chrome) : pas de barre du navigateur,
+// donc aucun moyen de recharger sans ce bouton.
+const refreshBtn = document.getElementById('refresh-btn');
+if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) refreshBtn.classList.remove('hidden');
+refreshBtn.addEventListener('click', () => location.reload());
 document.getElementById('update-dismiss-btn').addEventListener('click', () => updateBanner.classList.add('hidden'));
 
 // ===================== Coupures : bandeau, ecran allume, retour au premier plan =====================
