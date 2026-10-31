@@ -1,17 +1,18 @@
-# Watch Together
+# CinéDuo
 
-Site pour regarder du contenu a distance avec une autre personne : chat texte, camera deplacable (webcam en incrustation), et synchronisation video.
+Site pour regarder films et séries à deux, à distance : partage d'écran (Netflix, Prime Video…), YouTube synchronisé, caméra en bulle déplaçable, chat et réactions. En ligne sur **https://cineduo.fr**.
 
-## Fonctionnalites
+## Fonctionnalités
 
-- **Salons** : creez un salon (code a 6 caracteres) et partagez le lien pour que l'autre personne rejoigne (2 personnes par salon).
-- **YouTube** : synchronisation automatique et reelle de la lecture/pause/position via l'API officielle YouTube IFrame.
-- **Netflix / Amazon Prime** : ces plateformes bloquent toute integration dans une iframe (DRM, headers anti-iframe, aucune API de lecture publique) : un site web seul ne peut donc pas piloter leur lecteur a distance. Trois options selon le cas :
-  - **Partage d'ecran** (recommande quand une seule personne a le compte Netflix/Prime) : cette personne clique "Partager mon ecran" sur le site, l'autre voit sa lecture en direct des qu'elle rejoint le salon, sans rien installer et sans avoir son propre compte. Ideal quand l'autre personne est sur mobile.
-  - **Extension navigateur** (quand chacun a son propre compte Netflix/Prime et veut vraiment 2 lectures synchronisees) : voir `extension/` ci-dessous, synchronisation automatique reelle de la lecture/pause/position, comme sur YouTube. Doit etre installee des les deux cotes (necessite un navigateur desktop, ne fonctionne pas sur mobile).
-  - **Mode manuel** en dernier recours (sans rien installer, chacun avec son propre compte) : un bouton ouvre la plateforme dans un nouvel onglet, un compte a rebours partage permet de lancer la lecture en meme temps, et un bouton "Pause maintenant !" notifie l'autre personne.
-- **Camera** : chaque personne partage sa webcam (WebRTC pair-a-pair). La bulle video est deplacable a la souris/au doigt n'importe ou sur l'ecran (position sauvegardee localement).
-- **Chat** : messages texte en temps reel dans le salon.
+- **Salons à 2 personnes** : créez un salon et partagez le lien. Le dernier salon est mémorisé : en rouvrant l'appli, « Rejoindre en tant que… » suffit (un code choisi à la main, ex. `NOUS2`, sert de salon permanent).
+- **Partage d'écran** (Netflix, Prime Video, ou n'importe quel site) : une seule personne partage son onglet, l'autre regarde en direct sans rien installer ni avoir de compte. Image 720p dès le départ, son du film en stéréo, réglage du décalage son/image côté spectateur (bouton 🔊, aussi en plein écran).
+- **YouTube** : lecture, pause et position synchronisées automatiquement ; une personne qui arrive reprend la vidéo au même endroit.
+- **Caméra** : bulle déplaçable et redimensionnable, visible aussi en plein écran.
+- **Chat** : messages en temps réel, historique conservé sur l'appareil (100 derniers messages par salon).
+- **Réactions** : bouton 😀 dans la bulle caméra, l'emoji s'affiche par-dessus la vidéo chez les deux.
+- **Connexion robuste** : en cas de coupure, la place est gardée 45 s et tout se reconnecte sans recharger ; bandeau « Reconnexion en cours… ».
+- **Appli installable** (PWA) : Android Chrome → menu ⋮ → *Installer l'application* ; iPhone Safari → Partager → *Sur l'écran d'accueil*. Bouton ⟳ pour recharger dans l'appli, et bandeau « Nouvelle version disponible » après chaque mise en ligne.
+- **Extension navigateur** (quand chacun a son compte Netflix/Prime) : voir [`extension/README.md`](extension/README.md).
 
 ## Lancer le site en local
 
@@ -22,66 +23,49 @@ npm start
 
 Puis ouvrez `http://localhost:3000` dans deux navigateurs (ou deux profils) pour tester avec deux personnes.
 
-## Mettre le site en ligne (pour y acceder depuis un telephone)
-
-Ce site a besoin d'un serveur qui tourne en continu (Socket.IO garde une connexion ouverte), donc un hebergeur d'archives statiques (type Vercel/Netlify gratuit) ne convient pas. **Render** offre un service gratuit qui fonctionne bien pour ca :
-
-1. Allez sur [render.com](https://render.com) et connectez-vous avec votre compte GitHub.
-2. Cliquez **New +** puis **Web Service**.
-3. Choisissez le depot `selimcarter/claude-test` et la branche `claude/sync-streaming-platform-4typuw`.
-4. Renseignez :
-   - **Build Command** : `npm install`
-   - **Start Command** : `npm start`
-   - **Instance Type** : `Free`
-5. Cliquez **Create Web Service**. Au bout de 1-2 minutes, Render fournit une URL publique (`https://xxxx.onrender.com`) que vous pourrez ouvrir depuis votre telephone et partager avec l'autre personne.
-
-(Alternative equivalente : [Railway](https://railway.app), meme principe : connecter le depot, `npm install` / `npm start`.)
-
-Note : sur le plan gratuit de Render, le serveur s'endort apres une periode d'inactivite et met quelques secondes a se reveiller au premier chargement.
-
-## Ameliorer la fiabilite (serveur TURN dedie)
-
-Par defaut, le site utilise un serveur TURN **public et gratuit** (OpenRelay) pour que la camera/le partage d'ecran fonctionnent meme quand les deux personnes ne sont pas sur le meme reseau. Ce TURN public est partage par des milliers de projets dans le monde : ca marche, mais ca peut saccader ou echouer selon la charge du moment.
-
-Pour une connexion plus fiable, configurez un compte TURN dedie gratuit :
-
-1. Creez un compte sur [dashboard.metered.ca/signup](https://dashboard.metered.ca/signup) (offre gratuite).
-2. Dans le tableau de bord, creez une application ("Add Application") : notez son **nom de domaine** (ex: `monapp.metered.live`).
-3. Page **TURN Server** → section **TURN Credentials** → **Add Credential**, puis **Show API Key** sur l'identifiant cree : copiez la valeur `apiKey=...` (attention : ce n'est PAS la "Secret Key" du compte, que Metered refuse ici).
-4. Sur Render, ouvrez votre service → **Environment** → ajoutez deux variables :
-   - `METERED_DOMAIN` = le nom de domaine (sans le `.metered.live`, juste `monapp`)
-   - `METERED_API_KEY` = la cle de l'identifiant TURN (etape 3)
-5. Render redeploie automatiquement avec ces variables. Le site les utilise desormais a la place du TURN public, sans aucun changement de code necessaire.
-
-Sans ces variables, le site continue de fonctionner normalement avec le TURN public gratuit (aucune configuration n'est obligatoire).
-
-## Journal des coupures
-
-Chaque coupure (cote serveur et cote navigateur : heure, appareil, page visible ou en arriere-plan, reseau, raison de la coupure, etat de la connexion video) est enregistree. Pour le consulter :
-
-1. Sur Render → **Environment**, ajoutez une variable `ADMIN_TOKEN` avec un mot de passe de votre choix.
-2. Ouvrez `https://<votre-site>.onrender.com/admin/logs` : le navigateur demande un identifiant (n'importe lequel) et ce mot de passe.
-
-Le journal est garde en memoire : il est efface a chaque redemarrage ou mise en veille du serveur (il reste aussi visible dans l'onglet **Logs** de Render, lignes `[diag]`). Consultez-le donc juste apres une coupure.
-
 ## Tests
 
 ```bash
 npm test
 ```
 
-## Extension navigateur (Netflix / Prime Video)
+Ils tournent aussi automatiquement sur GitHub à chaque envoi (onglet **Actions**).
 
-Voir [`extension/README.md`](extension/README.md) pour l'installer et l'utiliser. Elle se charge en "mode developpeur" dans Chrome/Edge/Brave et se connecte au meme serveur que le site (via un canal WebSocket dedie, `/ext-ws`).
+## Mise en ligne (Render)
+
+Le site a besoin d'un serveur qui tourne en continu (connexions temps réel) : il est hébergé sur [Render](https://render.com), offre gratuite.
+
+1. **New +** → **Web Service** → dépôt `selimcarter/Claude-test`, branche `claude/sync-streaming-platform-4typuw`.
+2. **Region** : *Frankfurt* (au plus près de l'Europe et de l'Asie du Sud). **Build** : `npm install` · **Start** : `npm start` · **Instance** : *Free*.
+3. **Environment** : voir les variables ci-dessous.
+4. Chaque envoi sur la branche est mis en ligne automatiquement. Option conseillée : **Settings → Auto-Deploy → After CI Checks Pass**, pour attendre que les tests passent.
+5. **Nom de domaine** (`cineduo.fr`, acheté chez OVH) : Render → **Settings → Custom Domains**, puis dans la zone DNS OVH : un enregistrement **A** (sous-domaine vide) vers l'IP indiquée par Render, et un **CNAME** `www` vers l'adresse `….onrender.com` du service. Supprimer les anciens A / AAAA d'OVH.
+
+Sur l'offre gratuite, le serveur s'endort après 15 min sans personne connectée : la première ouverture prend alors quelques secondes à une minute. Il ne s'endort pas pendant une séance.
+
+### Variables d'environnement
+
+| Variable | Rôle |
+|---|---|
+| `METERED_DOMAIN` | Nom de l'application Metered, sans `.metered.live` (ex. `tethparty`). |
+| `METERED_API_KEY` | Clé d'un identifiant TURN Metered : page **TURN Server → TURN Credentials → Add Credential → Show API Key**, valeur après `apiKey=` (ce n'est **pas** la Secret Key du compte). |
+| `METERED_SECRET_KEY` | *Optionnel.* Secret Key du compte Metered (page **Developers**). Le serveur crée alors des identifiants TURN temporaires (12 h, renouvelés toutes les 3 h) au lieu d'utiliser la clé fixe. |
+| `ADMIN_TOKEN` | Mot de passe de la page `/admin/logs`. |
+
+Sans les variables Metered, le site utilise un relais TURN public gratuit (moins fiable). Le relais n'est utilisé que si la connexion directe entre les deux appareils échoue ; ses identifiants ne sont donnés qu'aux personnes qui entrent dans un salon.
+
+## Journal des coupures
+
+Chaque coupure (côté serveur et navigateur : heure, appareil, page visible ou non, réseau, raison, état de la vidéo) est enregistrée. Consultation : `https://cineduo.fr/admin/logs` (identifiant au choix + `ADMIN_TOKEN`). Ce journal repart à zéro à chaque redémarrage du serveur ; l'historique plus ancien reste dans **Render → Logs** (rechercher `[diag]`).
 
 ## Stack technique
 
-- Backend : Node.js, Express, Socket.IO (site : salons, chat, signalisation WebRTC, synchronisation YouTube) + un serveur WebSocket brut (`ws`) dedie a l'extension navigateur.
-- Frontend site : HTML/CSS/JS vanilla (aucune etape de build), API YouTube IFrame, WebRTC natif du navigateur.
-- Extension : Manifest V3 (content script + service worker), meme logique de synchro que le site mais appliquee a la balise `<video>` native de Netflix/Prime Video.
+- Backend : Node.js, Express, Socket.IO (salons, chat, signalisation WebRTC, synchro YouTube) + WebSocket brut (`ws`) pour l'extension (`/ext-ws`).
+- Frontend : HTML/CSS/JS sans étape de build, API YouTube IFrame, WebRTC natif.
+- Extension : Manifest V3 (content script + service worker).
 
 ## Limites connues
 
-- Les salons sont limites a 2 personnes (connexion WebRTC directe, sans serveur media).
-- Aucune donnee n'est persistee en base : tout est en memoire et disparait au redemarrage du serveur.
-- Sans l'extension, Netflix/Prime necessitent une synchronisation manuelle (voir ci-dessus) : c'est une contrainte technique des plateformes, pas une limite de ce projet.
+- 2 personnes maximum par salon (connexion WebRTC directe, sans serveur vidéo).
+- Partage d'écran impossible depuis un téléphone (limite des navigateurs mobiles) ; le son du partage ne passe que depuis Chrome / Edge sur ordinateur.
+- Les salons du site et de l'extension sont séparés.

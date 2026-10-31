@@ -8,7 +8,7 @@ const statusText = document.getElementById('status-text');
 const errorEl = document.getElementById('error');
 
 chrome.storage.sync.get(['serverUrl', 'roomId', 'name'], (saved) => {
-  if (saved.serverUrl) serverUrlInput.value = saved.serverUrl;
+  serverUrlInput.value = saved.serverUrl || 'https://cineduo.fr';
   if (saved.roomId) roomIdInput.value = saved.roomId;
   if (saved.name) userNameInput.value = saved.name;
 });

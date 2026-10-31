@@ -1,4 +1,4 @@
-# Extension Watch Together (Netflix / Prime Video)
+# Extension CinéDuo (Netflix / Prime Video)
 
 Cette extension complete le site web : elle s'injecte directement dans la page Netflix ou Prime Video (pas dans une iframe) pour piloter la vraie balise `<video>` du lecteur. C'est ce qui permet une **synchronisation automatique reelle** (lecture, pause, position) sur ces deux plateformes, exactement comme des services tels que Teleparty.
 
@@ -13,7 +13,7 @@ Elle ajoute aussi une bulle camera (deplacable) et un chat directement sur la pa
 
 ## Utilisation
 
-1. Deployez et lancez le serveur Watch Together (voir le README principal) ; notez son URL (ex: `https://votre-app.onrender.com`).
+1. Le serveur est en ligne sur `https://cineduo.fr` (ou deployez le votre, voir le README principal).
 2. Chaque personne ouvre Netflix ou Prime Video dans un onglet et lance la meme video.
 3. Chaque personne clique sur l'icone de l'extension, renseigne :
    - l'URL du serveur,

@@ -435,7 +435,7 @@ function createUI({ onToggleCam, onToggleMic, onSendChat }) {
       widget.classList.toggle('not-connected', !connected);
       chatBubble.classList.toggle('not-connected', !connected);
       if (!connected) chatPanel.classList.remove('open');
-      if (connected) toast('Connecte au salon Watch Together.');
+      if (connected) toast('Connecte au salon CinéDuo.');
     },
     setLocalStream(stream) {
       if (localVideo.srcObject === stream) return;
