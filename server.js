@@ -153,6 +153,7 @@ app.get('/admin/logs', (req, res) => {
 // Ce que les navigateurs envoient est relaye tel quel a l'autre : on n'accepte
 // que des valeurs du format attendu.
 const PLATFORMS = ['youtube', 'streaming'];
+const REACTIONS = ['😂', '❤️', '😮', '😱', '👍'];
 const isVideoId = (v) => typeof v === 'string' && /^[\w-]{11}$/.test(v);
 const isTime = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
@@ -166,6 +167,7 @@ const RATE_LIMITS = {
   'chat-message': [10, 10 * 1000],
   chat: [10, 10 * 1000], // extension
   'diag-log': [30, 60 * 1000],
+  reaction: [10, 5 * 1000],
 };
 const DEFAULT_RATE_LIMIT = [100, 1000]; // large : la video envoie des rafales de candidats ICE
 
@@ -336,6 +338,12 @@ io.on('connection', (socket) => {
       ts: Date.now(),
     };
     io.to(currentRoom).emit('chat-message', payload);
+  });
+
+  // --- Reactions rapides (emoji) affichees sur la video chez tout le monde ---
+  on('reaction', ({ emoji }) => {
+    if (!currentRoom || !REACTIONS.includes(emoji)) return;
+    io.to(currentRoom).emit('reaction', { emoji, fromId: clientId });
   });
 
   // --- Platform / tab selection, shared so both users see the same view ---

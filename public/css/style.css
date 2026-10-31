@@ -815,6 +815,42 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   color: #fff;
 }
 
+/* Rangee de reactions (dans la bulle camera, donc aussi en plein ecran). */
+.reaction-tray {
+  display: flex;
+  gap: 4px;
+  padding: 4px 4px 0;
+  background: var(--panel);
+}
+
+.reaction-tray button {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Emoji qui monte puis s'efface par-dessus la video, chez les deux personnes. */
+.reaction-float {
+  position: fixed;
+  bottom: 18%;
+  font-size: 44px;
+  pointer-events: none;
+  z-index: 2002; /* au-dessus du plein ecran CSS et des bandeaux */
+  animation: reaction-rise 2.6s ease-out forwards;
+}
+
+@keyframes reaction-rise {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  15% { transform: translateY(-4vh) scale(1.1); opacity: 1; }
+  100% { transform: translateY(-40vh) scale(1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reaction-float { animation: reaction-fade 2s ease-out forwards; }
+  @keyframes reaction-fade { from { opacity: 1; } to { opacity: 0; } }
+}
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;

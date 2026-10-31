@@ -1515,6 +1515,29 @@ document.addEventListener('keydown', (e) => {
   });
 })();
 
+// ===================== Reactions rapides =====================
+// Le bouton 😀 de la bulle camera deplie la rangee d'emojis ; chaque emoji
+// envoye s'affiche chez les deux personnes, par-dessus la video.
+const reactionTray = document.getElementById('reaction-tray');
+const reactionsToggleBtn = document.getElementById('reactions-toggle-btn');
+reactionsToggleBtn.addEventListener('click', () => {
+  const open = reactionTray.classList.toggle('hidden') === false;
+  reactionsToggleBtn.setAttribute('aria-expanded', String(open));
+});
+reactionTray.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-emoji]');
+  if (btn) socket.emit('reaction', { emoji: btn.dataset.emoji });
+});
+
+socket.on('reaction', ({ emoji }) => {
+  const el = document.createElement('div');
+  el.className = 'reaction-float';
+  el.textContent = emoji;
+  el.style.left = `${25 + Math.random() * 50}%`;
+  el.addEventListener('animationend', () => el.remove());
+  document.body.appendChild(el);
+});
+
 // ===================== Nouvelle version en ligne =====================
 // Le serveur annonce sa version a chaque connexion ; une mise en ligne le
 // redemarre, donc chaque page ouverte se reconnecte et la voit changer. On

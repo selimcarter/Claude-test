@@ -212,3 +212,17 @@ test('le serveur annonce sa version a chaque connexion', async () => {
   const version = await once(s, 'server-version');
   assert.strictEqual(typeof version, 'string');
 });
+
+test('reactions : relayees aux deux, emoji inconnu ignore', async () => {
+  const a = connect();
+  const b = connect();
+  await join(a, 'REAC1', 'alice-1234');
+  await join(b, 'REAC1', 'bob-12345');
+  const recues = [];
+  a.on('reaction', (r) => recues.push(`a:${r.emoji}`));
+  b.on('reaction', (r) => recues.push(`b:${r.emoji}`));
+  a.emit('reaction', { emoji: '<script>' });
+  a.emit('reaction', { emoji: '😂' });
+  await sleep(200);
+  assert.deepStrictEqual(recues.sort(), ['a:😂', 'b:😂']);
+});
