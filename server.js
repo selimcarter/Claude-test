@@ -49,7 +49,7 @@ app.use((req, res, next) => {
       'frame-src https://www.youtube.com https://www.youtube-nocookie.com',
       // wss/ws explicites : d'anciens Safari n'incluent pas les WebSocket dans 'self'.
       `connect-src 'self' wss://${host} ws://${host}`,
-      "img-src 'self' data: https://i.ytimg.com",
+      "img-src 'self' data: https://i.ytimg.com https://media.giphy.com",
       "style-src 'self' 'unsafe-inline'",
       "media-src 'self' blob:",
       "object-src 'none'",
@@ -136,6 +136,33 @@ async function getIceServers() {
 }
 getIceServers(); // prechauffe le cache au demarrage
 
+// ===================== GIFs (GIPHY) =====================
+// La recherche passe par le serveur : la cle GIPHY_API_KEY (Render) n'est
+// jamais visible sur le site. On ne renvoie que les identifiants des GIFs, le
+// navigateur reconstruit l'adresse de l'image chez GIPHY (pas d'URL libre).
+// GIPHY_BASE_URL : seulement pour les tests (faux GIPHY local).
+const isGifId = (v) => typeof v === 'string' && /^[A-Za-z0-9]{1,40}$/.test(v);
+const GIF_TRENDING_CACHE_MS = 10 * 60 * 1000; // la cle gratuite est limitee a ~100 appels/heure
+let gifTrendingCache = { ids: null, until: 0 };
+
+async function searchGifs(query) {
+  const key = process.env.GIPHY_API_KEY;
+  if (!key) return null;
+  const q = String(query || '').trim().slice(0, 50);
+  if (!q && Date.now() < gifTrendingCache.until) return gifTrendingCache.ids;
+  const base = process.env.GIPHY_BASE_URL || 'https://api.giphy.com';
+  const params = new URLSearchParams({ api_key: key, limit: '24', rating: 'pg-13', lang: 'fr' });
+  if (q) params.set('q', q);
+  const response = await fetch(`${base}/v1/gifs/${q ? 'search' : 'trending'}?${params}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error(`GIPHY a repondu ${response.status}`);
+  const { data } = await response.json();
+  const ids = (Array.isArray(data) ? data : []).map((g) => g && g.id).filter(isGifId);
+  if (!q) gifTrendingCache = { ids, until: Date.now() + GIF_TRENDING_CACHE_MS };
+  return ids;
+}
+
 // ===================== Journal des coupures =====================
 // Garde en memoire les derniers evenements de connexion (cote serveur et
 // remontes par les navigateurs) pour connaitre la cause exacte d'une coupure.
@@ -213,6 +240,7 @@ const RATE_LIMITS = {
   chat: [10, 10 * 1000], // extension
   'diag-log': [30, 60 * 1000],
   reaction: [10, 5 * 1000],
+  'gif-search': [20, 60 * 1000],
 };
 const DEFAULT_RATE_LIMIT = [100, 1000]; // large : la video envoie des rafales de candidats ICE
 
@@ -374,15 +402,28 @@ io.on('connection', (socket) => {
     });
   });
 
-  on('chat-message', ({ text }) => {
-    if (!currentRoom || !text) return;
+  // Un message est soit du texte, soit un GIF (identifiant GIPHY).
+  on('chat-message', ({ text, gif }) => {
+    if (!currentRoom || (!text && !isGifId(gif))) return;
     const payload = {
       from: socket.data.name || 'Invite',
       fromId: clientId,
-      text: String(text).slice(0, 2000),
       ts: Date.now(),
     };
+    if (isGifId(gif)) payload.gif = gif;
+    else payload.text = String(text).slice(0, 2000);
     io.to(currentRoom).emit('chat-message', payload);
+  });
+
+  on('gif-search', async ({ q }) => {
+    if (!currentRoom) return;
+    try {
+      const ids = await searchGifs(q);
+      socket.emit('gif-results', ids ? { q, ids } : { q, error: 'off' });
+    } catch (err) {
+      console.error('Recherche GIPHY impossible:', err.message);
+      socket.emit('gif-results', { q, error: 'fail' });
+    }
   });
 
   // --- Reactions rapides (emoji) affichees sur la video chez tout le monde ---

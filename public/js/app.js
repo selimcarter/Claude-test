@@ -417,14 +417,28 @@ chatToggleBtn.addEventListener('click', () => setChatCollapsed(false));
 // l'arrivee dans le salon.
 if (window.innerWidth <= 860) setChatCollapsed(true);
 
-function renderChatMessage({ from, text, ts }, self) {
+// Image d'un GIF GIPHY a partir de son identifiant (verifie : lettres/chiffres).
+const gifUrl = (id) => `https://media.giphy.com/media/${id}/200w.webp`;
+const isGifId = (v) => typeof v === 'string' && /^[A-Za-z0-9]{1,40}$/.test(v);
+
+function renderChatMessage({ from, text, gif, ts }, self) {
   const div = document.createElement('div');
   div.className = 'chat-msg' + (self ? ' self' : '');
   const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // "from" est un nom choisi par l'autre personne : il doit etre echappe au
   // meme titre que le texte du message (voir escapeHtml plus bas), sinon un
   // prenom contenant du HTML/JS s'executerait ici (XSS stocke).
-  div.innerHTML = `<span class="meta">${escapeHtml(from)} - ${time}</span>${escapeHtml(text)}`;
+  div.innerHTML = `<span class="meta">${escapeHtml(from)} - ${time}</span>`;
+  if (isGifId(gif)) {
+    const img = document.createElement('img');
+    img.className = 'chat-gif';
+    img.src = gifUrl(gif);
+    img.alt = 'GIF';
+    img.addEventListener('load', () => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+    div.appendChild(img);
+  } else {
+    div.appendChild(document.createTextNode(text || ''));
+  }
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -448,14 +462,24 @@ socket.on('chat-message', (msg) => {
   renderChatMessage(msg, self);
   try {
     const history = JSON.parse(localStorage.getItem(chatHistoryKey()) || '[]');
-    history.push({ from: msg.from, text: msg.text, ts: msg.ts, self });
+    history.push({ from: msg.from, text: msg.text, gif: msg.gif, ts: msg.ts, self });
     localStorage.setItem(chatHistoryKey(), JSON.stringify(history.slice(-CHAT_HISTORY_MAX)));
   } catch (e) { /* stockage plein ou bloque : le chat marche quand meme */ }
 
   // Notification en coin pour les messages recus : visible meme si le chat
   // est replie, ou si on regarde la video en plein ecran.
-  if (!self) showChatPopup(msg.from, msg.text);
+  if (isGifId(msg.gif)) showGifFloat(msg.gif); // aussi chez l'envoyeur, comme les reactions
+  else if (!self) showChatPopup(msg.from, msg.text);
 });
+
+function showGifFloat(id) {
+  const img = document.createElement('img');
+  img.className = 'gif-float';
+  img.src = gifUrl(id);
+  img.alt = '';
+  img.addEventListener('animationend', () => img.remove());
+  document.body.appendChild(img);
+}
 
 function showChatPopup(from, text) {
   const popup = document.getElementById('chat-popup');
@@ -1560,9 +1584,66 @@ for (const emoji of REACTIONS) {
   reactionTray.appendChild(b);
 }
 const reactionsToggleBtn = document.getElementById('reactions-toggle-btn');
-reactionsToggleBtn.addEventListener('click', () => {
-  const open = reactionTray.classList.toggle('hidden') === false;
-  reactionsToggleBtn.setAttribute('aria-expanded', String(open));
+const gifPanel = document.getElementById('gif-panel');
+const gifToggleBtn = document.getElementById('gif-toggle-btn');
+const gifSearch = document.getElementById('gif-search');
+const gifGrid = document.getElementById('gif-grid');
+
+// Un seul panneau ouvert a la fois (emojis ou GIFs).
+function togglePanel(panel, btn, otherPanel, otherBtn) {
+  const open = panel.classList.toggle('hidden') === false;
+  btn.setAttribute('aria-expanded', String(open));
+  if (open) {
+    otherPanel.classList.add('hidden');
+    otherBtn.setAttribute('aria-expanded', 'false');
+  }
+  return open;
+}
+reactionsToggleBtn.addEventListener('click', () => togglePanel(reactionTray, reactionsToggleBtn, gifPanel, gifToggleBtn));
+gifToggleBtn.addEventListener('click', () => {
+  if (togglePanel(gifPanel, gifToggleBtn, reactionTray, reactionsToggleBtn) && !gifGrid.hasChildNodes()) {
+    searchGifs(''); // GIFs tendance a la premiere ouverture
+  }
+});
+
+let gifQuery = '';
+function searchGifs(q) {
+  gifQuery = q;
+  socket.emit('gif-search', { q });
+}
+let gifSearchTimer = null;
+gifSearch.addEventListener('input', () => {
+  clearTimeout(gifSearchTimer);
+  gifSearchTimer = setTimeout(() => searchGifs(gifSearch.value.trim()), 400);
+});
+
+function gifMessage(key) {
+  const p = document.createElement('p');
+  p.textContent = t(key);
+  gifGrid.replaceChildren(p);
+}
+socket.on('gif-results', ({ q, ids, error }) => {
+  if (q !== gifQuery) return; // reponse d'une ancienne recherche
+  if (error) return gifMessage(error === 'off' ? 'gif.unavailable' : 'gif.error');
+  if (!ids.length) return gifMessage('gif.none');
+  gifGrid.replaceChildren(...ids.filter(isGifId).map((id) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.gif = id;
+    const img = document.createElement('img');
+    img.src = gifUrl(id);
+    img.alt = 'GIF';
+    img.loading = 'lazy';
+    b.appendChild(img);
+    return b;
+  }));
+  gifGrid.scrollTop = 0;
+});
+gifGrid.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-gif]');
+  if (!btn) return;
+  socket.emit('chat-message', { gif: btn.dataset.gif });
+  togglePanel(gifPanel, gifToggleBtn, reactionTray, reactionsToggleBtn); // referme apres l'envoi
 });
 reactionTray.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-emoji]');

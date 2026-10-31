@@ -137,9 +137,17 @@
         <button id="camera-grow-btn" data-i18n-title="camera.growTitle" title="Agrandir la bulle">+</button>
       </div>
     </div>
-    <!-- Reactions, sous la bulle : le bouton 😀 deplie la grille (remplie par app.js) -->
-    <button type="button" id="reactions-toggle-btn" class="reactions-toggle-btn" aria-expanded="false" aria-controls="reaction-tray" data-i18n-title="reactions.title" title="Reactions">😀</button>
+    <!-- Reactions et GIFs, sous la bulle : chaque bouton deplie son panneau (rempli par app.js) -->
+    <div class="reactions-toggles">
+      <button type="button" id="reactions-toggle-btn" class="reactions-toggle-btn" aria-expanded="false" aria-controls="reaction-tray" data-i18n-title="reactions.title" title="Reactions">😀</button>
+      <button type="button" id="gif-toggle-btn" class="reactions-toggle-btn gif-toggle-btn" aria-expanded="false" aria-controls="gif-panel" data-i18n-title="gif.title" title="GIF">GIF</button>
+    </div>
     <div class="reaction-tray hidden" id="reaction-tray"></div>
+    <div class="gif-panel hidden" id="gif-panel">
+      <input type="search" id="gif-search" data-i18n-placeholder="gif.search" placeholder="Rechercher un GIF" maxlength="50" autocomplete="off">
+      <div class="gif-grid" id="gif-grid"></div>
+      <div class="gif-credit">Powered by GIPHY</div>
+    </div>
   </div>
 
 </section>

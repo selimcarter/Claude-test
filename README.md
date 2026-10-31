@@ -10,6 +10,7 @@ Site pour regarder films et séries à deux, à distance : partage d'écran (Net
 - **Caméra** : bulle déplaçable et redimensionnable, visible aussi en plein écran.
 - **Chat** : messages en temps réel, historique conservé sur l'appareil (100 derniers messages par salon).
 - **Réactions** : bouton 😀 sous la bulle caméra (50 émojis), l'emoji s'affiche par-dessus la vidéo chez les deux.
+- **GIFs** : bouton GIF sous la bulle caméra, recherche dans GIPHY ; le GIF s'affiche quelques secondes sur la vidéo et reste dans le chat.
 - **Connexion robuste** : en cas de coupure, la place est gardée 45 s et tout se reconnecte sans recharger ; bandeau « Reconnexion en cours… ».
 - **Appli installable** (PWA) : Android Chrome → menu ⋮ → *Installer l'application* ; iPhone Safari → Partager → *Sur l'écran d'accueil*. Bouton ⟳ pour recharger dans l'appli, et bandeau « Nouvelle version disponible » après chaque mise en ligne.
 - **Extension navigateur** (quand chacun a son compte Netflix/Prime) : voir [`extension/README.md`](extension/README.md).
@@ -50,6 +51,7 @@ Sur l'offre gratuite, le serveur s'endort après 15 min sans personne connectée
 | `METERED_DOMAIN` | Nom de l'application Metered, sans `.metered.live` (ex. `tethparty`). |
 | `METERED_API_KEY` | Clé d'un identifiant TURN Metered : page **TURN Server → TURN Credentials → Add Credential → Show API Key**, valeur après `apiKey=` (ce n'est **pas** la Secret Key du compte). |
 | `METERED_SECRET_KEY` | *Optionnel.* Secret Key du compte Metered (page **Developers**). Le serveur crée alors des identifiants TURN temporaires (12 h, renouvelés toutes les 3 h) au lieu d'utiliser la clé fixe. |
+| `GIPHY_API_KEY` | *Optionnel.* Clé API GIPHY (compte gratuit sur developers.giphy.com → Create an App → API). Sans elle, le bouton GIF affiche « GIFs pas encore activés ». |
 | `ADMIN_TOKEN` | Mot de passe de la page `/admin/logs`. |
 
 Sans les variables Metered, le site utilise un relais TURN public gratuit (moins fiable). Le relais n'est utilisé que si la connexion directe entre les deux appareils échoue ; ses identifiants ne sont donnés qu'aux personnes qui entrent dans un salon.

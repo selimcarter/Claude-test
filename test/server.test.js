@@ -227,6 +227,54 @@ test('reactions : relayees aux deux, emoji inconnu ignore', async () => {
   assert.deepStrictEqual(recues.sort(), ['a:😂', 'b:😂']);
 });
 
+test('GIF : envoye dans le chat aux deux, identifiant invalide ignore', async () => {
+  const a = connect();
+  const b = connect();
+  await join(a, 'GIF1', 'alice-1234');
+  await join(b, 'GIF1', 'bob-12345');
+  const recus = [];
+  b.on('chat-message', (m) => recus.push(m.gif));
+  a.emit('chat-message', { gif: 'https://pirate.example/x.gif' });
+  a.emit('chat-message', { gif: 'abc123XYZ' });
+  await sleep(200);
+  assert.deepStrictEqual(recus, ['abc123XYZ']);
+  // Sans GIPHY_API_KEY, la recherche repond "desactive" au lieu de rester muette.
+  const res = once(a, 'gif-results');
+  a.emit('gif-search', { q: 'lol' });
+  assert.deepStrictEqual(await res, { q: 'lol', error: 'off' });
+});
+
+test('GIF : recherche via GIPHY, cle jamais renvoyee au navigateur', async () => {
+  const http = require('node:http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    calls.push(req.url);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ data: [{ id: 'gifUn1' }, { id: '../mauvais' }, { id: 'gifDeux2' }] }));
+  });
+  await new Promise((r) => fake.listen(3993, r));
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: '3994', GIPHY_API_KEY: 'cle-giphy', GIPHY_BASE_URL: 'http://localhost:3993' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  try {
+    await new Promise((resolve) => srv.stdout.on('data', (d) => { if (String(d).includes('running')) resolve(); }));
+    const s = io('http://localhost:3994', { forceNew: true, reconnection: false, transports: ['websocket'] });
+    sockets.push(s);
+    await once(s, 'connect');
+    const joined = once(s, 'joined');
+    s.emit('join-room', { roomId: 'GIF2', name: 'a', clientId: 'alice-1234' });
+    await joined;
+    const res = once(s, 'gif-results');
+    s.emit('gif-search', { q: 'bravo' });
+    assert.deepStrictEqual(await res, { q: 'bravo', ids: ['gifUn1', 'gifDeux2'] });
+    assert.ok(calls[0].startsWith('/v1/gifs/search?api_key=cle-giphy'));
+  } finally {
+    srv.kill();
+    fake.close();
+  }
+});
+
 test('Metered : identifiant temporaire cree puis utilise a la place de la cle fixe', async () => {
   const http = require('node:http');
   const calls = [];
