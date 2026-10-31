@@ -1280,6 +1280,8 @@ function exitCssFullscreen() {
     if (btn) { btn.textContent = '⛶'; btn.title = t('fullscreen.enter'); }
   });
   document.body.appendChild(cameraWidget);
+  // Le reglage du son reprend sa place, juste au-dessus du lecteur.
+  document.getElementById('screen-viewer-streaming').before(document.getElementById('audio-delay-control'));
   // On restaure la position choisie par glisser-depose (si aucune, la CSS
   // par defaut du widget s'applique).
   if (cameraWidget.dataset.savedTop !== undefined) {
@@ -1333,6 +1335,9 @@ document.querySelectorAll('.fullscreen-btn').forEach((btn) => {
     cameraWidget.style.bottom = '';
 
     viewer.appendChild(cameraWidget);
+    // En plein ecran, plus de place au-dessus du lecteur : le reglage du son
+    // passe par-dessus la video (coin haut-gauche, sous le bouton plein ecran).
+    viewer.appendChild(document.getElementById('audio-delay-control'));
     refreshCameraVideos();
     // overflow:hidden sur <body> seul ne bloque pas toujours de facon fiable
     // le rebond/defilement tactile sur mobile (iOS et certaines versions

@@ -509,6 +509,14 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
 /* Le bouton passe a gauche en plein ecran : a droite, il se retrouverait
    recouvert (donc inaccessible) par la bulle camera positionnee juste
    au-dessus, plus grande. */
+.screen-share-viewer.css-fullscreen .audio-delay-control {
+  position: absolute;
+  top: 60px;
+  left: 16px;
+  z-index: 6;
+  margin: 0;
+}
+
 .screen-share-viewer.css-fullscreen .fullscreen-btn {
   left: 16px;
   right: auto;
