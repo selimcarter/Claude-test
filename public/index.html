@@ -3,7 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Watch Together</title>
+<title>CinéDuo</title>
+<!-- Installable sur telephone (ecran d'accueil, plein ecran sans barre d'adresse) -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#070b20">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CinéDuo">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -12,7 +21,7 @@
 <section id="landing" class="screen">
   <div class="landing-card">
     <button type="button" id="lang-toggle-landing" class="lang-toggle-btn">اردو</button>
-    <h1>Watch Together</h1>
+    <h1><img src="icons/logo-cineduo.png" alt="CinéDuo" class="landing-logo" width="720" height="235"></h1>
     <p class="subtitle" data-i18n="landing.subtitle">Regardez YouTube (synchronise automatiquement) ou une plateforme de streaming comme Netflix / Prime Video (synchro manuelle via partage d'ecran) a distance, avec camera et chat.</p>
 
     <label for="name-input" data-i18n="landing.nameLabel">Votre prenom</label>

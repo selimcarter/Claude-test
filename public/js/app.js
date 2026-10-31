@@ -445,7 +445,7 @@ document.getElementById('copy-link-btn').addEventListener('click', () => {
   // Messages...), plus rapide qu'un copier-coller manuel dans une autre appli.
   if (navigator.share) {
     navigator.share({
-      title: 'Watch Together',
+      title: 'CinéDuo',
       text: t('share.text'),
       url: location.href,
     }).catch(() => {}); // l'utilisateur a simplement annule le partage

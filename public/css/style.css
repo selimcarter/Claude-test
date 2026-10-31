@@ -73,6 +73,14 @@ html, body {
   color: transparent;
 }
 
+/* Logo CinéDuo (fond transparent). */
+.landing-logo {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+}
+
 .subtitle {
   color: var(--text-dim);
   font-size: 14px;

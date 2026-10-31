@@ -52,7 +52,7 @@ const TRANSLATIONS = {
     'share.forwardSent': "Demande d'avancer envoyee.",
     'share.pauseFromPeer': '⏸ {from} demande une pause !',
     'share.forwardFromPeer': "⏩ {from} demande d'avancer la lecture !",
-    'share.text': 'Rejoins-moi sur Watch Together :',
+    'share.text': 'Rejoins-moi sur CinéDuo :',
 
     'chat.title': 'Chat',
     'chat.closeTitle': 'Replier le chat',
@@ -134,7 +134,7 @@ const TRANSLATIONS = {
     'share.forwardSent': 'Aage barhne ki maang bhej di gayi.',
     'share.pauseFromPeer': '⏸ {from} ne pause mangi hai!',
     'share.forwardFromPeer': '⏩ {from} ne aage barhne ko kaha hai!',
-    'share.text': 'Watch Together par mere saath shamil hon:',
+    'share.text': 'CinéDuo par mere saath shamil hon:',
 
     'chat.title': 'Chat',
     'chat.closeTitle': 'Chat band karein',
