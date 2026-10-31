@@ -740,14 +740,18 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   top: 130px; /* sous la barre du haut + l'en-tete du chat, pour ne pas les recouvrir */
   right: 24px;
   width: 220px;
+  z-index: 100;
+  touch-action: none;
+  user-select: none;
+}
+
+/* Le cadre visible de la bulle ; les reactions restent en dehors, dessous. */
+.camera-frame {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow-soft);
-  z-index: 100;
-  touch-action: none;
-  user-select: none;
 }
 
 .camera-drag-handle {
@@ -815,19 +819,41 @@ button.primary:hover { filter: brightness(1.08); box-shadow: 0 14px 30px -8px rg
   color: #fff;
 }
 
-/* Rangee de reactions (dans la bulle camera, donc aussi en plein ecran). */
-.reaction-tray {
-  display: flex;
-  gap: 4px;
-  padding: 4px 4px 0;
-  background: var(--panel);
-}
-
-.reaction-tray button {
-  flex: 1;
-  padding: 6px 0;
+/* Reactions sous la bulle (dans le meme bloc deplacable, donc aussi en plein
+   ecran). La bulle ancree en bas sur mobile grandit vers le haut. */
+.reactions-toggle-btn {
+  display: block;
+  margin: 6px auto 0;
+  padding: 4px 10px;
   font-size: 20px;
   line-height: 1;
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+}
+
+.reaction-tray {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px;
+  max-height: 168px;
+  overflow-y: auto;
+  touch-action: pan-y; /* la bulle bloque les gestes pour le glisser-deposer */
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+}
+
+.reaction-tray.hidden { display: none; }
+
+.reaction-tray button {
+  padding: 5px 0;
+  font-size: 20px;
+  line-height: 1;
+  background: transparent;
+  border: none;
 }
 
 /* Emoji qui monte puis s'efface par-dessus la video, chez les deux personnes. */

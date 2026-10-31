@@ -125,25 +125,21 @@
 
   <!-- Bulle camera deplacable -->
   <div id="camera-widget" class="camera-widget">
-    <div class="camera-drag-handle" id="camera-drag-handle">
-      <video id="local-video" autoplay playsinline muted></video>
-      <video id="remote-video" autoplay playsinline></video>
+    <div class="camera-frame">
+      <div class="camera-drag-handle" id="camera-drag-handle">
+        <video id="local-video" autoplay playsinline muted></video>
+        <video id="remote-video" autoplay playsinline></video>
+      </div>
+      <div class="camera-buttons">
+        <button id="camera-shrink-btn" data-i18n-title="camera.shrinkTitle" title="Reduire la bulle">−</button>
+        <button id="toggle-cam-btn" data-i18n-title="camera.toggleCamTitleGeneric" title="Activer/couper la camera">📷</button>
+        <button id="toggle-mic-btn" class="off" data-i18n-title="camera.toggleMicTitleGeneric" title="Activer/couper le micro">🎤</button>
+        <button id="camera-grow-btn" data-i18n-title="camera.growTitle" title="Agrandir la bulle">+</button>
+      </div>
     </div>
-    <!-- Reactions rapides : depliees par le bouton 😀 ci-dessous -->
-    <div class="reaction-tray hidden" id="reaction-tray">
-      <button type="button" data-emoji="😂">😂</button>
-      <button type="button" data-emoji="❤️">❤️</button>
-      <button type="button" data-emoji="😮">😮</button>
-      <button type="button" data-emoji="😱">😱</button>
-      <button type="button" data-emoji="👍">👍</button>
-    </div>
-    <div class="camera-buttons">
-      <button id="camera-shrink-btn" data-i18n-title="camera.shrinkTitle" title="Reduire la bulle">−</button>
-      <button id="toggle-cam-btn" data-i18n-title="camera.toggleCamTitleGeneric" title="Activer/couper la camera">📷</button>
-      <button id="toggle-mic-btn" class="off" data-i18n-title="camera.toggleMicTitleGeneric" title="Activer/couper le micro">🎤</button>
-      <button id="reactions-toggle-btn" aria-expanded="false" aria-controls="reaction-tray" data-i18n-title="reactions.title" title="Reactions">😀</button>
-      <button id="camera-grow-btn" data-i18n-title="camera.growTitle" title="Agrandir la bulle">+</button>
-    </div>
+    <!-- Reactions, sous la bulle : le bouton 😀 deplie la grille (remplie par app.js) -->
+    <button type="button" id="reactions-toggle-btn" class="reactions-toggle-btn" aria-expanded="false" aria-controls="reaction-tray" data-i18n-title="reactions.title" title="Reactions">😀</button>
+    <div class="reaction-tray hidden" id="reaction-tray"></div>
   </div>
 
 </section>

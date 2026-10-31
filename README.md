@@ -9,7 +9,7 @@ Site pour regarder films et séries à deux, à distance : partage d'écran (Net
 - **YouTube** : lecture, pause et position synchronisées automatiquement ; une personne qui arrive reprend la vidéo au même endroit.
 - **Caméra** : bulle déplaçable et redimensionnable, visible aussi en plein écran.
 - **Chat** : messages en temps réel, historique conservé sur l'appareil (100 derniers messages par salon).
-- **Réactions** : bouton 😀 dans la bulle caméra, l'emoji s'affiche par-dessus la vidéo chez les deux.
+- **Réactions** : bouton 😀 sous la bulle caméra (50 émojis), l'emoji s'affiche par-dessus la vidéo chez les deux.
 - **Connexion robuste** : en cas de coupure, la place est gardée 45 s et tout se reconnecte sans recharger ; bandeau « Reconnexion en cours… ».
 - **Appli installable** (PWA) : Android Chrome → menu ⋮ → *Installer l'application* ; iPhone Safari → Partager → *Sur l'écran d'accueil*. Bouton ⟳ pour recharger dans l'appli, et bandeau « Nouvelle version disponible » après chaque mise en ligne.
 - **Extension navigateur** (quand chacun a son compte Netflix/Prime) : voir [`extension/README.md`](extension/README.md).

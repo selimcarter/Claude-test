@@ -1541,9 +1541,24 @@ document.addEventListener('keydown', (e) => {
 })();
 
 // ===================== Reactions rapides =====================
-// Le bouton 😀 de la bulle camera deplie la rangee d'emojis ; chaque emoji
+// Le bouton 😀 sous la bulle camera deplie la grille d'emojis ; chaque emoji
 // envoye s'affiche chez les deux personnes, par-dessus la video.
+// Meme liste que REACTIONS dans server.js (le serveur refuse les autres).
+const REACTIONS = [
+  '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😏',
+  '🤔', '🙄', '😬', '😴', '🥱', '😮', '😲', '😱', '😨', '😰',
+  '😢', '😭', '🥺', '😡', '🤬', '🤯', '🤢', '💀', '👻', '🙈',
+  '❤️', '💔', '🔥', '✨', '💯', '👍', '👎', '👏', '🙌', '🙏',
+  '💪', '👀', '🍿', '🎬', '🎉', '☕', '🍕', '🍷', '💤', '❓',
+];
 const reactionTray = document.getElementById('reaction-tray');
+for (const emoji of REACTIONS) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.emoji = emoji;
+  b.textContent = emoji;
+  reactionTray.appendChild(b);
+}
 const reactionsToggleBtn = document.getElementById('reactions-toggle-btn');
 reactionsToggleBtn.addEventListener('click', () => {
   const open = reactionTray.classList.toggle('hidden') === false;

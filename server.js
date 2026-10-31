@@ -191,7 +191,14 @@ app.get('/admin/logs', (req, res) => {
 // Ce que les navigateurs envoient est relaye tel quel a l'autre : on n'accepte
 // que des valeurs du format attendu.
 const PLATFORMS = ['youtube', 'streaming'];
-const REACTIONS = ['😂', '❤️', '😮', '😱', '👍'];
+// Meme liste que REACTIONS dans public/js/app.js.
+const REACTIONS = [
+  '😂', '🤣', '😊', '😍', '🥰', '😘', '😎', '🤩', '🥳', '😏',
+  '🤔', '🙄', '😬', '😴', '🥱', '😮', '😲', '😱', '😨', '😰',
+  '😢', '😭', '🥺', '😡', '🤬', '🤯', '🤢', '💀', '👻', '🙈',
+  '❤️', '💔', '🔥', '✨', '💯', '👍', '👎', '👏', '🙌', '🙏',
+  '💪', '👀', '🍿', '🎬', '🎉', '☕', '🍕', '🍷', '💤', '❓',
+];
 const isVideoId = (v) => typeof v === 'string' && /^[\w-]{11}$/.test(v);
 const isTime = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
