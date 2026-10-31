@@ -141,7 +141,13 @@ const nameInput = document.getElementById('name-input');
 const roomCodeInput = document.getElementById('room-code-input');
 
 const params = new URLSearchParams(location.search);
-if (params.get('room')) roomCodeInput.value = params.get('room');
+// Salon permanent : le dernier salon utilise est memorise. Ouvrir l'appli
+// (sans lien) le propose directement : "Rejoindre en tant que X" suffit.
+const LAST_ROOM_KEY = 'watchTogetherLastRoom';
+let lastRoom = null;
+try { lastRoom = localStorage.getItem(LAST_ROOM_KEY); } catch (e) { /* ignore */ }
+const prefilledRoom = params.get('room') || lastRoom;
+if (prefilledRoom) roomCodeInput.value = prefilledRoom;
 
 // On se souvient du prenom d'une visite a l'autre (evite de le retaper a
 // chaque fois qu'on rejoint un salon).
@@ -170,14 +176,15 @@ document.getElementById('join-room-btn').addEventListener('click', () => {
 
 // Lien avec ?room=CODE + prenom deja memorise : on rejoint en un clic plutot
 // que de faire ressaisir le prenom et re-cliquer "Rejoindre" a chaque fois.
-if (params.get('room') && savedName) {
+if (prefilledRoom && savedName) {
   document.getElementById('join-room-btn').textContent = t('landing.joinAs', { name: savedName });
 }
 
 function enterRoom(roomId, name) {
   state.roomId = roomId;
   state.myName = name;
-  history.replaceState(null, '', `?room=${roomId}`);
+  try { localStorage.setItem(LAST_ROOM_KEY, roomId); } catch (e) { /* ignore */ }
+  history.replaceState(null, '', `?room=${encodeURIComponent(roomId)}`);
   // fresh : premiere entree de cette page, l'autre doit repartir de zero
   // avec nous (on n'a encore aucune connexion video avec lui).
   socket.emit('join-room', { roomId, name, clientId: CLIENT_ID, fresh: true });
@@ -1613,7 +1620,7 @@ document.addEventListener('watchtogether-languagechange', () => {
   if (lastPresenceUsers.length > 0) renderPresence(lastPresenceUsers);
   renderBanner();
 
-  if (params.get('room') && savedName) {
+  if (prefilledRoom && savedName) {
     document.getElementById('join-room-btn').textContent = t('landing.joinAs', { name: savedName });
   }
 });
