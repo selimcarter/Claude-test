@@ -778,6 +778,19 @@ function createPeerConnection(peerId, { kind, onTrack } = {}) {
   return pc;
 }
 
+// Son du partage d'ecran = un film, pas une voix d'appel : par defaut WebRTC
+// l'envoie en mono a ~32 kbps. On annonce a l'autre cote qu'on accepte le
+// stereo a 128 kbps (parametres Opus de la description recue : c'est elle qui
+// regle l'encodeur de celui qui envoie).
+function withMusicAudio(sdp) {
+  const opus = /a=rtpmap:(\d+) opus\/48000\/2/i.exec(sdp);
+  if (!opus) return sdp;
+  return sdp.replace(new RegExp(`a=fmtp:${opus[1]} ([^\\r\\n]*)`), (line, params) => {
+    const kept = params.split(';').filter((p) => !/^(stereo|sprop-stereo|maxaveragebitrate)=/.test(p.trim()));
+    return `a=fmtp:${opus[1]} ${[...kept, 'stereo=1', 'sprop-stereo=1', 'maxaveragebitrate=128000'].join(';')}`;
+  });
+}
+
 async function applyIncomingSignal(pc, peerId, signal) {
   if (signal.sdp) {
     const isOffer = signal.sdp.type === 'offer';
@@ -793,7 +806,8 @@ async function applyIncomingSignal(pc, peerId, signal) {
     // qu'on est en 'have-local-offer' (comportement standard des navigateurs).
     // Un rollback manuel separe ici cree une fenetre async supplementaire ou
     // un onnegotiationneeded concurrent peut interferer et casser l'etat.
-    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    const remote = pc._kind === 'screen' ? { type: signal.sdp.type, sdp: withMusicAudio(signal.sdp.sdp) } : signal.sdp;
+    await pc.setRemoteDescription(new RTCSessionDescription(remote));
 
     if (isOffer) {
       const answer = await pc.createAnswer();
@@ -918,9 +932,11 @@ async function startScreenShare(platform) {
   try {
     // 720p (1080p a deja ete essaye : trop lourd pour la connexion) a 24 images
     // par seconde, la cadence d'un film (15 saccadait).
+    // Son : stereo et sans les traitements prevus pour la voix (annulation
+    // d'echo, reduction de bruit, gain auto), qui degradent la musique d'un film.
     state.screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
-      audio: true,
+      audio: { channelCount: 2, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
     });
   } catch (e) {
     showToast(e && e.name === 'NotAllowedError'
@@ -933,6 +949,7 @@ async function startScreenShare(platform) {
   // Indique a l'encodeur qu'il s'agit d'un film (mouvement) et non de texte :
   // il privilegie alors la fluidite plutot que la nettete d'une image fixe.
   if ('contentHint' in screenTrack) screenTrack.contentHint = 'motion';
+  state.screenStream.getAudioTracks().forEach((track) => { if ('contentHint' in track) track.contentHint = 'music'; });
   screenTrack.addEventListener('ended', stopScreenShare);
 
   // On affiche aussi le partage dans cet onglet, pour pouvoir suivre le film
@@ -1485,6 +1502,19 @@ document.addEventListener('keydown', (e) => {
     }
   });
 })();
+
+// ===================== Nouvelle version en ligne =====================
+// Le serveur annonce sa version a chaque connexion ; une mise en ligne le
+// redemarre, donc chaque page ouverte se reconnecte et la voit changer. On
+// propose alors de recharger (sans forcer : un rechargement couperait le film).
+let loadedVersion = null;
+const updateBanner = document.getElementById('update-banner');
+socket.on('server-version', (version) => {
+  if (loadedVersion === null) loadedVersion = version;
+  else if (version !== loadedVersion) updateBanner.classList.remove('hidden');
+});
+document.getElementById('update-reload-btn').addEventListener('click', () => location.reload());
+document.getElementById('update-dismiss-btn').addEventListener('click', () => updateBanner.classList.add('hidden'));
 
 // ===================== Coupures : bandeau, ecran allume, retour au premier plan =====================
 // Bandeau visible pendant une coupure, au lieu d'une image figee sans
