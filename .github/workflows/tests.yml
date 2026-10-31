@@ -1,0 +1,18 @@
+# Lance les tests du serveur a chaque envoi sur GitHub (onglet "Actions").
+# Sur Render, "Auto-Deploy : After CI Checks Pass" attend qu'ils passent avant
+# de mettre en ligne.
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test

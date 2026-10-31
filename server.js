@@ -181,7 +181,10 @@ app.get('/admin/logs', (req, res) => {
     return res.status(401).send('Mot de passe requis.');
   }
   const lines = diagLog.slice().reverse().map(formatDiagLine);
-  res.type('text/plain; charset=utf-8').send(lines.join('\n') || 'Aucun evenement enregistre depuis le dernier demarrage du serveur.');
+  // Ce journal en memoire repart a zero a chaque redemarrage ; chaque ligne est
+  // aussi ecrite dans les Logs Render, conserves plusieurs jours.
+  const header = 'Depuis le dernier demarrage du serveur. Historique plus ancien : Render > CineDuo > Logs, rechercher [diag].\n\n';
+  res.type('text/plain; charset=utf-8').send(header + (lines.join('\n') || 'Aucun evenement enregistre.'));
 });
 
 // ===================== Validation des donnees relayees =====================
