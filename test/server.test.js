@@ -226,3 +226,36 @@ test('reactions : relayees aux deux, emoji inconnu ignore', async () => {
   await sleep(200);
   assert.deepStrictEqual(recues.sort(), ['a:😂', 'b:😂']);
 });
+
+test('Metered : identifiant temporaire cree puis utilise a la place de la cle fixe', async () => {
+  const http = require('node:http');
+  const calls = [];
+  const fake = http.createServer((req, res) => {
+    calls.push(`${req.method} ${req.url}`);
+    res.setHeader('Content-Type', 'application/json');
+    if (req.method === 'POST') return res.end(JSON.stringify({ apiKey: 'cle-temporaire' }));
+    const key = new globalThis.URL(req.url, 'http://x').searchParams.get('apiKey');
+    res.end(JSON.stringify([{ urls: 'turn:faux.metered', username: key, credential: 'x' }]));
+  });
+  await new Promise((r) => fake.listen(3991, r));
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: '3992', METERED_DOMAIN: 'test', METERED_API_KEY: 'cle-fixe', METERED_SECRET_KEY: 'secret',
+      METERED_BASE_URL: 'http://localhost:3991', METERED_ACTIVATION_MS: '300' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  try {
+    await new Promise((resolve) => srv.stdout.on('data', (d) => { if (String(d).includes('running')) resolve(); }));
+    await sleep(600); // creation + activation (300 ms)
+    const s = io('http://localhost:3992', { forceNew: true, reconnection: false, transports: ['websocket'] });
+    sockets.push(s);
+    await once(s, 'connect');
+    const joined = once(s, 'joined');
+    s.emit('join-room', { roomId: 'TEMP1', name: 'a', clientId: 'alice-1234' });
+    const { iceServers } = await joined;
+    assert.strictEqual(iceServers[0].username, 'cle-temporaire');
+    assert.ok(calls.some((c) => c.startsWith('POST /api/v1/turn/credential?secretKey=secret')));
+  } finally {
+    srv.kill();
+    fake.close();
+  }
+});

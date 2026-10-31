@@ -77,18 +77,53 @@ const FALLBACK_ICE_SERVERS = [
 // d'environnement Render) : envoyee uniquement aux personnes qui entrent dans
 // un salon (evenement 'joined'), plus via une URL publique ou n'importe qui
 // pouvait les recuperer et consommer le quota du relais.
-// shortcut: identifiants Metered permanents ; passer aux identifiants
-// temporaires (API "create credential" + METERED_SECRET_KEY) si le quota est abuse.
 const ICE_CACHE_MS = 10 * 60 * 1000;
 let iceCache = { servers: FALLBACK_ICE_SERVERS, until: 0 };
+// METERED_BASE_URL : seulement pour les tests (faux Metered local).
+const meteredBase = () => process.env.METERED_BASE_URL || `https://${process.env.METERED_DOMAIN}.metered.live`;
+
+// Identifiants TURN temporaires (si METERED_SECRET_KEY est defini sur Render) :
+// un nouvel identifiant valable 12 h est cree toutes les 3 h, donc un
+// identifiant recupere par un tiers ne sert que quelques heures. Il faut
+// ~2 min a Metered pour l'activer : en attendant on garde le precedent (ou la
+// cle fixe METERED_API_KEY au demarrage). Chaque personne garde au moins 9 h
+// de validite, de quoi finir un long film.
+const TEMP_CREDENTIAL_TTL_S = 12 * 3600;
+const TEMP_CREDENTIAL_ROTATE_MS = 3 * 3600 * 1000;
+const TEMP_CREDENTIAL_ACTIVATION_MS = Number(process.env.METERED_ACTIVATION_MS) || 2 * 60 * 1000; // reglable pour les tests
+let tempApiKey = null;
+
+async function rotateTempCredential() {
+  const secret = process.env.METERED_SECRET_KEY;
+  if (!secret || !process.env.METERED_DOMAIN) return;
+  try {
+    const response = await fetch(`${meteredBase()}/api/v1/turn/credential?secretKey=${encodeURIComponent(secret)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiryInSeconds: TEMP_CREDENTIAL_TTL_S, label: 'cineduo-auto' }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`Metered a repondu ${response.status}`);
+    const { apiKey } = await response.json();
+    if (!apiKey) throw new Error('reponse sans apiKey');
+    setTimeout(() => {
+      tempApiKey = apiKey;
+      iceCache.until = 0; // les prochaines entrees dans un salon recoivent le nouvel identifiant
+    }, TEMP_CREDENTIAL_ACTIVATION_MS).unref();
+  } catch (err) {
+    console.error('Creation d\'un identifiant TURN temporaire impossible (on garde le precedent):', err.message);
+  }
+}
+rotateTempCredential();
+setInterval(rotateTempCredential, TEMP_CREDENTIAL_ROTATE_MS).unref();
 
 async function getIceServers() {
-  const apiKey = process.env.METERED_API_KEY;
+  const apiKey = tempApiKey || process.env.METERED_API_KEY;
   const domain = process.env.METERED_DOMAIN;
   if (!apiKey || !domain) return FALLBACK_ICE_SERVERS;
   if (Date.now() < iceCache.until) return iceCache.servers;
   try {
-    const response = await fetch(`https://${domain}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(`${meteredBase()}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error(`Metered a repondu ${response.status}`);
